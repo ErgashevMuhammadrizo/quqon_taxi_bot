@@ -102,7 +102,25 @@ async def _is_protected_group(chat_id: int) -> bool:
 
 
 async def _is_admin(user_id: int) -> bool:
+    """GuardBot admini ekanini tekshiradi (DB + super_admins config)."""
     return (await get_admin_role(user_id)) is not None
+
+
+async def _is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
+    """
+    Foydalanuvchi shu guruhning Telegram admini yoki GuardBot admini ekanini
+    tekshiradi. Ikkalasidan biri rost bo'lsa True qaytaradi.
+    Botni spam tekshiruvidan himoya qilish uchun ishlatiladi.
+    """
+    # GuardBot admini (DB + config) — tezkor tekshiruv
+    if await get_admin_role(user_id) is not None:
+        return True
+    # Telegram guruh admini — API chaqiruv
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        return member.status in ("administrator", "creator")
+    except TelegramAPIError:
+        return False
 
 
 _LINK_RE = _re.compile(r"(https?://|t\.me/|@[\w_]{4,})", _re.IGNORECASE)
@@ -540,7 +558,7 @@ async def on_group_text(message: Message, bot: Bot) -> None:
     user = message.from_user
     if user is None or user.is_bot:
         return
-    if await _is_admin(user.id):
+    if await _is_group_admin(bot, message.chat.id, user.id):
         return
 
     text = message.text or ""
@@ -669,7 +687,7 @@ async def on_group_media(message: Message, bot: Bot) -> None:
     user = message.from_user
     if user is None or user.is_bot:
         return
-    if await _is_admin(user.id):
+    if await _is_group_admin(bot, message.chat.id, user.id):
         return
 
     caption = message.caption
