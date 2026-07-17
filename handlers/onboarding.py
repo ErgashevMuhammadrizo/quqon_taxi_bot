@@ -21,7 +21,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
-    BotCommand, BotCommandScopeChat,
+    BotCommand, BotCommandScopeAllChatAdministrators, BotCommandScopeChat,
     CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message,
 )
 from sqlalchemy import select
@@ -89,6 +89,21 @@ _COMMANDS: dict[AdminRole, list[BotCommand]] = {
         BotCommand(command="scan_history", description="🔍 Tekshiruv tarixi"),
     ],
 }
+
+# ─── Guruh ichida ko'rinadigan komandalar (barcha guruh adminlariga) ──────────
+# BotCommandScopeAllChatAdministrators — guruhda bot menyusini ochganda
+# faqat admin bo'lgan foydalanuvchilarga ko'rsatiladi.
+
+_GROUP_ADMIN_COMMANDS: list[BotCommand] = [
+    BotCommand(command="gban",    description="🚫 Guruhdan ban qilish"),
+    BotCommand(command="gunban",  description="✅ Guruhda blokdan chiqarish"),
+    BotCommand(command="gmute",   description="🔇 Vaqtincha sukut qilish"),
+    BotCommand(command="gunmute", description="🔊 Sukutdan chiqarish"),
+    BotCommand(command="gwarn",   description="⚠️ Ogohlantirish (3 ta = ban)"),
+    BotCommand(command="ginfo",   description="👤 Foydalanuvchi ma'lumoti"),
+    BotCommand(command="gstatus", description="🛡 Guruh himoya holati"),
+    BotCommand(command="gclean",  description="🧹 So'nggi xabarlarni tozalash"),
+]
 
 
 # ─── Yordamchi funksiyalar ────────────────────────────────────────────────────

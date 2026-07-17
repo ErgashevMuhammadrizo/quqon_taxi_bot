@@ -17,9 +17,14 @@ nazardan (kontent sizishi vs. xavfsizlik/xulq-atvor) tekshiradi.
 """
 from __future__ import annotations
 
+import json
+
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import CallbackQuery, ChatPermissions, Message
+from aiogram.types import (
+    CallbackQuery, ChatPermissions, InlineKeyboardButton,
+    InlineKeyboardMarkup, Message,
+)
 
 from config import settings
 from core.ban_manager import BanManager
@@ -55,10 +60,80 @@ _FULL_PERMISSIONS = ChatPermissions(
 
 @router.message(F.new_chat_members)
 async def on_new_chat_members(message: Message, bot: Bot) -> None:
+    """
+    Yangi a'zo qo'shilganda DARHOL tekshiruv:
+      1. BannedUser jadvalida bormi? → darhol ban (qaytib kirmoqchi)
+      2. Whitelist'da bormi? → tekshiruvdan o'tkazib yuboramiz
+      3. SecurityEngine evaluate_join → Trust Score / Raid / Captcha
+    """
+    from database.db import get_session
+    from database.models import BannedUser, ProtectedGroup, Whitelist
+    from sqlalchemy import select as sa_select
+
+    # Bu guruh himoyalangan guruhmi? Tekshiramiz.
+    try:
+        async with get_session() as s:
+            pg = (await s.execute(
+                sa_select(ProtectedGroup).where(
+                    ProtectedGroup.chat_id == message.chat.id,
+                    ProtectedGroup.is_active == True,  # noqa: E712
+                )
+            )).scalar_one_or_none()
+    except Exception:
+        pg = None
+
     for member in message.new_chat_members:
         if member.is_bot:
             continue
 
+        # ── 1. Whitelist tekshiruvi — ozod foydalanuvchiga tegmaymiz ──────────
+        try:
+            async with get_session() as s:
+                wl = (await s.execute(
+                    sa_select(Whitelist).where(Whitelist.user_id == member.id)
+                )).scalar_one_or_none()
+            if wl:
+                logger.info(f"[JOIN] user={member.id} whitelist'da — o'tkazildi.")
+                continue
+        except Exception:
+            pass
+
+        # ── 2. BannedUser jadvalida bormi? Qaytib kirmoqchi → DARHOL BAN ──────
+        if pg is not None:
+            try:
+                async with get_session() as s:
+                    banned_row = (await s.execute(
+                        sa_select(BannedUser).where(
+                            BannedUser.user_id == member.id,
+                            BannedUser.chat_id == message.chat.id,
+                        )
+                    )).scalar_one_or_none()
+                if banned_row:
+                    ban_manager = BanManager(bot)
+                    await ban_manager.execute_ban(
+                        member.id, message.chat.id,
+                        reason="Banlangan foydalanuvchi qaytib kirmoqchi bo'ldi",
+                        evidence={
+                            "type": "rebanned",
+                            "original_ban_reason": banned_row.reason[:200],
+                            "original_ban_at": str(banned_row.banned_at),
+                        },
+                        risk_score=100.0,
+                    )
+                    # Kirish xabarini o'chiramiz
+                    try:
+                        await message.delete()
+                    except TelegramAPIError:
+                        pass
+                    logger.warning(
+                        f"[JOIN-REBAN] user={member.id} chat={message.chat.id} "
+                        "banlangan foydalanuvchi qaytib kirdi — qayta ban qilindi."
+                    )
+                    continue
+            except Exception as exc:
+                logger.error(f"[JOIN] BannedUser tekshiruvda xato: {exc}")
+
+        # ── 3. SecurityEngine — Trust Score / Raid / Captcha ─────────────────
         has_username = bool(member.username)
         has_photo = False
         try:
@@ -74,13 +149,19 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
         )
 
         if evaluation.decision == SecurityDecision.AUTO_BAN:
-            ban_manager = BanManager(bot)
-            await ban_manager.execute_ban(
-                member.id, message.chat.id,
-                reason="Security Engine: JOIN risk score 100+",
-                evidence={"risk_score": evaluation.risk_score},
+            # Join da hech qachon avtoban qilmaymiz —
+            # foydalanuvchi hali biror narsa qilmagan, admindan so'raymiz.
+            await _confirm_join_ban(
+                bot=bot,
+                chat_id=message.chat.id,
+                user_id=member.id,
+                full_name=member.full_name,
+                username=member.username,
                 risk_score=evaluation.risk_score,
+                join_msg_id=message.message_id,
             )
+            # Xabar yuborilguncha vaqtinchalik cheklaymiz (sukut)
+            await _restrict_member(bot, message.chat.id, member.id)
             continue
 
         if evaluation.raid.raid_mode_active:
@@ -244,3 +325,147 @@ async def cmd_raid_off(message: Message) -> None:
         return
     await security_engine.disable_raid_mode(message.chat.id, message.from_user.id)
     await message.answer("✅ Raid Mode o'chirildi. Guruh odatiy rejimga qaytdi.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ─── JOIN CONFIRM — Shubhali yangi a'zoni admindan tasdiqlash ───────────────
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def _confirm_join_ban(
+    bot: Bot,
+    chat_id: int,
+    user_id: int,
+    full_name: str | None,
+    username: str | None,
+    risk_score: float,
+    join_msg_id: int,
+) -> None:
+    """
+    Shubhali yangi a'zo uchun adminlarga confirm xabari yuboradi.
+    Foydalanuvchi vaqtinchalik cheklangan (sukut) holda qoladi.
+    Admin "Ban" bosguncha yoki "Ruxsat" bosguncha u yoza olmaydi.
+    """
+    user_ref = f"@{username}" if username else f"<code>{user_id}</code>"
+    name_str = full_name or "Noma'lum"
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="🚫 Ban qilish",
+            callback_data=f"join_ban:{user_id}:{chat_id}:{join_msg_id}",
+        ),
+        InlineKeyboardButton(
+            text="✅ Ruxsat berish",
+            callback_data=f"join_allow:{user_id}:{chat_id}",
+        ),
+    ]])
+    text = (
+        "🔶 <b>SHUBHALI YANGI A'ZO</b>\n\n"
+        f"👤 Ism: <b>{name_str}</b>\n"
+        f"🔗 Username: {user_ref}\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        f"💬 Guruh: <code>{chat_id}</code>\n"
+        f"📊 Risk score: <b>{risk_score:.0f}/100</b>\n\n"
+        "⏸ Foydalanuvchi <b>vaqtinchalik sukut</b> qilindi.\n"
+        "Quyidagi tugmalardan birini bosing:"
+    )
+
+    sent: set[int] = set()
+    for admin_id in settings.super_admins:
+        try:
+            await bot.send_message(admin_id, text, reply_markup=kb)
+            sent.add(admin_id)
+        except TelegramAPIError:
+            pass
+
+    # DB adminlarga ham yuboramiz
+    try:
+        from database.db import get_session
+        from database.models import Admin
+        from sqlalchemy import select as sa_select
+        async with get_session() as s:
+            admins = (await s.execute(sa_select(Admin))).scalars().all()
+        for a in admins:
+            if a.telegram_id not in sent:
+                try:
+                    await bot.send_message(a.telegram_id, text, reply_markup=kb)
+                except TelegramAPIError:
+                    pass
+    except Exception:
+        pass
+
+    logger.warning(
+        f"[JOIN-CONFIRM] user={user_id} chat={chat_id} "
+        f"risk={risk_score:.0f} — admindan tasdiq kutilmoqda."
+    )
+
+
+@router.callback_query(F.data.startswith("join_ban:"))
+async def on_join_ban_confirm(cb: CallbackQuery, bot: Bot) -> None:
+    """Admin shubhali a'zoni ban qilishni tasdiqladi."""
+    if await get_admin_role(cb.from_user.id) is None:
+        await cb.answer("⛔️ Ruxsat yo'q.", show_alert=True)
+        return
+    await cb.answer()
+
+    parts = cb.data.split(":")
+    user_id   = int(parts[1])
+    chat_id   = int(parts[2])
+    join_msg_id = int(parts[3])
+
+    bm = BanManager(bot)
+    ok = await bm.execute_ban(
+        user_id=user_id,
+        chat_id=chat_id,
+        reason=f"Admin @{cb.from_user.username or cb.from_user.id} — shubhali join ban",
+        evidence={"type": "join_confirm_ban", "by": cb.from_user.id},
+        risk_score=100.0,
+        banned_by=cb.from_user.id,
+    )
+    # Kirish xabarini o'chirishga urinamiz
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=join_msg_id)
+    except TelegramAPIError:
+        pass
+
+    admin_ref = f"@{cb.from_user.username or cb.from_user.id}"
+    if ok:
+        await cb.message.edit_text(
+            f"🚫 <code>{user_id}</code> ban qilindi.\n"
+            f"👮 Admin: {admin_ref}"
+        )
+        logger.info(f"[JOIN-BAN] user={user_id} chat={chat_id} by={cb.from_user.id}")
+    else:
+        await cb.message.edit_text(
+            f"⚠️ <code>{user_id}</code> whitelist'da — ban qilib bo'lmadi."
+        )
+
+
+@router.callback_query(F.data.startswith("join_allow:"))
+async def on_join_allow(cb: CallbackQuery, bot: Bot) -> None:
+    """Admin shubhali a'zoga ruxsat berdi — cheklovni olib tashlaymiz."""
+    if await get_admin_role(cb.from_user.id) is None:
+        await cb.answer("⛔️ Ruxsat yo'q.", show_alert=True)
+        return
+    await cb.answer()
+
+    parts = cb.data.split(":")
+    user_id = int(parts[1])
+    chat_id = int(parts[2])
+
+    try:
+        await bot.restrict_chat_member(
+            chat_id, user_id,
+            permissions=_FULL_PERMISSIONS,
+        )
+    except TelegramAPIError as exc:
+        logger.warning(f"[JOIN-ALLOW] restrict olib tashlashda xato: {exc}")
+
+    # Trust score ni oshiramiz
+    await security_engine.on_captcha_result(chat_id, user_id, passed=True)
+
+    admin_ref = f"@{cb.from_user.username or cb.from_user.id}"
+    await cb.message.edit_text(
+        f"✅ <code>{user_id}</code> ga ruxsat berildi.\n"
+        f"👮 Admin: {admin_ref}"
+    )
+    logger.info(f"[JOIN-ALLOW] user={user_id} chat={chat_id} by={cb.from_user.id}")

@@ -346,9 +346,12 @@ async def _handle_spam_result(
     message: Message,
 ) -> bool:
     """
-    SpamResult asosida ban yoki confirm yuboradi.
-    True qaytarsa — xabar spam deb topildi va harakat qilindi.
-    False qaytarsa — spam emas, keyingi tekshiruvga o'tilsin.
+    SpamResult asosida DARHOL ban qiladi — hech qanday admin confirm yo'q.
+    Reklama/spam topilsa xabar o'chiriladi, foydalanuvchi banlanadi,
+    adminlarga bildirishnoma ketadi.
+
+    True  → spam topildi va ban qilindi.
+    False → spam emas, keyingi tekshiruvga o'tilsin.
     """
     if not result.is_spam:
         return False
@@ -357,51 +360,31 @@ async def _handle_spam_result(
     if user is None:
         return False
 
+    # Ishonch darajasi SPAM_CONFIRM_CONFIDENCE dan past bo'lsa — e'tiborsiz
+    if result.confidence < settings.SPAM_CONFIRM_CONFIDENCE:
+        return False
+
     conf = result.confidence
     evidence = {
-        "spam_type": result.spam_type,
+        "spam_type":  result.spam_type,
         "confidence": round(conf, 3),
-        "matched": result.matched[:5],
+        "matched":    result.matched[:5],
         "message_id": message.message_id,
+        "text_preview": (message.text or message.caption or "")[:200],
     }
 
-    if conf >= settings.SPAM_AUTO_BAN_CONFIDENCE:
-        await _do_ban(
-            bot=bot,
-            user_id=user.id,
-            chat_id=message.chat.id,
-            message=message,
-            reason=f"Spam/reklama aniqlandi: {result.spam_type} ({conf:.0%})",
-            evidence=evidence,
-            risk_score=conf * 100,
-        )
-        return True
-
-    if conf >= settings.SPAM_CONFIRM_CONFIDENCE:
-        await _notify_confirm(
-            bot=bot,
-            user_id=user.id,
-            chat_id=message.chat.id,
-            message_id=message.message_id,
-            reason=f"Shubhali spam: {result.spam_type} ({conf:.0%})",
-            risk_score=conf * 100,
-            evidence=evidence,
-        )
-        # Audit log
-        try:
-            async with get_session() as s:
-                s.add(AuditLog(
-                    user_id=user.id, chat_id=message.chat.id,
-                    action=ActionType.SCAN,
-                    reason=f"Spam confirm: {result.spam_type}",
-                    evidence=json.dumps(evidence, ensure_ascii=False),
-                    risk_score=conf * 100,
-                ))
-        except Exception:
-            pass
-        return True
-
-    return False
+    # ── Har qanday spam/reklama → DARHOL BAN ─────────────────────────────────
+    # (confirm yo'q — reklama tashgan zahoti ban)
+    await _do_ban(
+        bot=bot,
+        user_id=user.id,
+        chat_id=message.chat.id,
+        message=message,
+        reason=f"Reklama/spam aniqlandi: {result.spam_type} ({conf:.0%})",
+        evidence=evidence,
+        risk_score=conf * 100,
+    )
+    return True
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -543,11 +526,13 @@ async def on_bot_message(message: Message, bot: Bot) -> None:
 )
 async def on_group_text(message: Message, bot: Bot) -> None:
     """
-    Guruhga kelgan matnli xabar (forward ham, oddiy ham).
+    Guruhga kelgan har bir matnli xabar — 24/7 kuzatuv.
     Tekshiruv tartibi:
-      1. Spam/reklama → BAN/confirm
-      2. Watermark → BAN
-      3. Hash/fuzzy mos kelish → risk scoring → BAN/confirm
+      0. Security Engine — xulq-atvor risk
+      1. Spam/reklama   → DARHOL BAN (confirm yo'q)
+      2. Watermark      → DARHOL BAN
+      3. Hash/fuzzy     → risk scoring → BAN / confirm
+      *  Har xabar audit log ga yoziladi
     """
     if not await _is_protected_group(message.chat.id):
         return
@@ -557,16 +542,31 @@ async def on_group_text(message: Message, bot: Bot) -> None:
         return
     if await _is_admin(user.id):
         return
-    if not message.text or len(message.text) < MIN_TEXT_LEN:
-        return
 
-    text = message.text
+    text = message.text or ""
+    text_len = len(text.strip())
+
+    # ── Har xabar uchun scan log (24/7 monitoring) ────────────────────────────
+    try:
+        async with get_session() as s:
+            s.add(AuditLog(
+                user_id=user.id,
+                chat_id=message.chat.id,
+                action=ActionType.SCAN,
+                reason="24/7 matn kuzatuvi",
+                risk_score=0.0,
+            ))
+    except Exception:
+        pass
+
+    if text_len < MIN_TEXT_LEN:
+        return
 
     # ── 0. Security Engine — xulq-atvor asosidagi risk-tekshiruv ──────────────
     if await _run_security_risk_check(bot, message, user, SecurityActionType.MESSAGE):
         return
 
-    # ── 1. Spam / reklama tekshiruvi ──────────────────────────────────────────
+    # ── 1. Spam / reklama tekshiruvi → DARHOL BAN ─────────────────────────────
     spam_result = detect_spam_in_text(text)
     if await _handle_spam_result(bot, spam_result, message):
         return
@@ -598,13 +598,13 @@ async def on_group_text(message: Message, bot: Bot) -> None:
     known = [(pid, exc) for pid, exc, _ in posts if exc]
     analysis = _analyzer.analyze_text(text, known)
 
-    # Audit log (scan)
+    # Scan natijasini audit log ga yangilaymiz
     try:
         async with get_session() as s:
             s.add(AuditLog(
                 user_id=user.id, chat_id=message.chat.id,
                 action=ActionType.SCAN,
-                reason=f"Matn tekshiruvi: {'mos' if analysis.is_match else 'mos emas'}",
+                reason=f"Kontent tahlili: {'mos' if analysis.is_match else 'mos emas'} ({analysis.match_type})",
                 risk_score=analysis.similarity * 100,
             ))
     except Exception:
@@ -656,10 +656,12 @@ async def on_group_text(message: Message, bot: Bot) -> None:
 )
 async def on_group_media(message: Message, bot: Bot) -> None:
     """
-    Guruhga kelgan media xabar (rasm, video, hujjat).
+    Guruhga kelgan media xabar — 24/7 kuzatuv.
     Tekshiruv tartibi:
-      1. Caption'da spam/reklama → BAN/confirm
-      2. pHash + OCR background job orqali tekshiruv
+      0. Security Engine — xulq-atvor risk
+      1. Caption spam/reklama → DARHOL BAN (confirm yo'q)
+      2. pHash + OCR background job
+      *  Har media audit log ga yoziladi
     """
     if not await _is_protected_group(message.chat.id):
         return
@@ -672,11 +674,24 @@ async def on_group_media(message: Message, bot: Bot) -> None:
 
     caption = message.caption
 
-    # ── 0. Security Engine — xulq-atvor asosidagi risk-tekshiruv ──────────────
+    # ── Har media uchun scan log (24/7 monitoring) ────────────────────────────
+    try:
+        async with get_session() as s:
+            s.add(AuditLog(
+                user_id=user.id,
+                chat_id=message.chat.id,
+                action=ActionType.SCAN,
+                reason="24/7 media kuzatuvi",
+                risk_score=0.0,
+            ))
+    except Exception:
+        pass
+
+    # ── 0. Security Engine ────────────────────────────────────────────────────
     if await _run_security_risk_check(bot, message, user, SecurityActionType.MEDIA):
         return
 
-    # ── 1. Caption spam tekshiruvi ────────────────────────────────────────────
+    # ── 1. Caption spam tekshiruvi → DARHOL BAN ───────────────────────────────
     if caption:
         spam_result = detect_spam_in_media(caption)
         if await _handle_spam_result(bot, spam_result, message):

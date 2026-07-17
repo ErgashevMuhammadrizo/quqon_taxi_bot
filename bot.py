@@ -19,7 +19,7 @@ from aiohttp import web
 
 from config import settings
 from database.db import init_models
-from handlers import admin, channel_events, group_events, security_events
+from handlers import admin, channel_events, group_events, group_commands, security_events
 from handlers.start import router as start_router
 from handlers.onboarding import router as onboarding_router, set_role_commands
 from middlewares.rate_limit import ThrottlingMiddleware
@@ -69,6 +69,7 @@ async def create_dispatcher() -> Dispatcher:
     dp.include_router(start_router)           # /start, /help
     dp.include_router(onboarding_router)      # FSM: add_admin, add_channel, add_group
     dp.include_router(channel_events.router)  # kanal postlari + my_chat_member
+    dp.include_router(group_commands.router)  # guruh ichida admin komandalar (/gban, /gwarn...)
     dp.include_router(group_events.router)    # guruh xabarlari + my_chat_member (+ Security Engine risk-check)
     dp.include_router(security_events.router) # join / captcha / raid (Security Engine v3)
     dp.include_router(admin.router)           # barcha admin komandalar
