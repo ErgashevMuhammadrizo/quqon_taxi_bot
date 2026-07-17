@@ -65,6 +65,23 @@ class User(Base):
     risk_score:    Mapped[float]      = mapped_column(Float, default=0.0)
     is_banned:     Mapped[bool]       = mapped_column(Boolean, default=False)
 
+    # ── Security Engine (v3) ────────────────────────────────────────────────
+    # Trust Score — 100 dan boshlanadi, shubhali harakatlar uchun kamayadi,
+    # admin tasdig'i uchun ortadi. security/trust_score.py boshqaradi.
+    trust_score:        Mapped[float]           = mapped_column(Float, default=100.0)
+    warnings:           Mapped[int]             = mapped_column(Integer, default=0)
+    mute_count:         Mapped[int]             = mapped_column(Integer, default=0)
+    ban_count:          Mapped[int]             = mapped_column(Integer, default=0)
+    join_time:          Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_active_at:     Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    has_username:       Mapped[bool]            = mapped_column(Boolean, default=False)
+    has_profile_photo:  Mapped[bool]            = mapped_column(Boolean, default=False)
+    captcha_passed:     Mapped[bool]            = mapped_column(Boolean, default=False)
+    is_approved:        Mapped[bool]            = mapped_column(Boolean, default=False)
+    suspicious_score:   Mapped[float]           = mapped_column(Float, default=0.0)
+    groups_joined_count: Mapped[int]            = mapped_column(Integer, default=0)
+    message_count:      Mapped[int]             = mapped_column(Integer, default=0)
+
 
 # ─── Himoyalangan kanallar ────────────────────────────────────────────────────
 
@@ -111,6 +128,19 @@ class ProtectedGroup(Base):
     # Bot bu guruhda admin ekanmi (tekshirilgan vaqt)
     bot_is_admin:   Mapped[bool]             = mapped_column(Boolean, default=False)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # ── Security Engine (v3) — har guruh uchun sozlanadigan xavfsizlik ────────
+    raid_protection_enabled:  Mapped[bool]  = mapped_column(Boolean, default=True)
+    captcha_enabled:          Mapped[bool]  = mapped_column(Boolean, default=True)
+    forward_block_enabled:    Mapped[bool]  = mapped_column(Boolean, default=False)
+    link_block_enabled:       Mapped[bool]  = mapped_column(Boolean, default=True)
+    media_block_enabled:      Mapped[bool]  = mapped_column(Boolean, default=False)
+    ai_detection_enabled:     Mapped[bool]  = mapped_column(Boolean, default=False)
+    risk_threshold:           Mapped[int]   = mapped_column(Integer, default=70)
+    trust_threshold:          Mapped[int]   = mapped_column(Integer, default=40)
+    # Raid Mode runtime holati — RaidDetector tomonidan boshqariladi.
+    raid_mode_active:         Mapped[bool]  = mapped_column(Boolean, default=False)
+    raid_mode_since:          Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     posts: Mapped[list["ProtectedPost"]] = relationship(back_populates="group")
 
@@ -240,3 +270,141 @@ class CloneIncident(Base):
     resolved:         Mapped[bool]       = mapped_column(Boolean, default=False)
 
     monitor: Mapped["MonitoredChannel"] = relationship(back_populates="incidents")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ─── SECURITY ENGINE (v3) ───────────────────────────────────────────────────
+# Professional Telegram Security System uchun jadvallar:
+#   risk_history      — har bir tekshirilgan action (join/message/media/...)
+#   security_logs     — JOIN/LEAVE/BAN/MUTE/DELETE/... voqealar jurnali
+#   captcha_sessions  — join-captcha holati (button/emoji/math/sequence)
+#   trust_scores      — Trust Score o'zgarishlari tarixi (audit uchun)
+#   raid_logs         — Anti-Raid Engine hodisalari
+# ═══════════════════════════════════════════════════════════════════════════
+
+class SecurityActionType(str, enum.Enum):
+    """Risk Analyzer tekshiradigan action turlari."""
+    JOIN    = "join"
+    MESSAGE = "message"
+    MEDIA   = "media"
+    FORWARD = "forward"
+    LINK    = "link"
+    MENTION = "mention"
+    REACTION = "reaction"
+    EDIT    = "edit"
+    DELETE  = "delete"
+
+
+class SecurityDecision(str, enum.Enum):
+    """Risk Analyzer harakat qarori (spetsifikatsiya bo'yicha chegaralar)."""
+    ALLOW            = "ALLOW"
+    ADMIN_ALERT      = "ADMIN_ALERT"       # risk >= 70
+    TEMPORARY_RESTRICT = "TEMPORARY_RESTRICT"  # risk >= 90
+    AUTO_BAN         = "AUTO_BAN"          # risk >= 100
+
+
+class SecurityEventType(str, enum.Enum):
+    """security_logs uchun voqea turlari."""
+    JOIN            = "JOIN"
+    LEAVE           = "LEAVE"
+    BAN             = "BAN"
+    MUTE            = "MUTE"
+    DELETE          = "DELETE"
+    FORWARD_BLOCK   = "FORWARD_BLOCK"
+    LINK_BLOCK      = "LINK_BLOCK"
+    RAID            = "RAID"
+    SPAM            = "SPAM"
+    CAPTCHA_FAIL    = "CAPTCHA_FAIL"
+    CAPTCHA_PASS    = "CAPTCHA_PASS"
+    ADMIN_ALERT     = "ADMIN_ALERT"
+    TEMP_RESTRICT   = "TEMP_RESTRICT"
+    TRUST_CHANGE    = "TRUST_CHANGE"
+    RISK_CHANGE     = "RISK_CHANGE"
+    RAID_MODE_ON    = "RAID_MODE_ON"
+    RAID_MODE_OFF   = "RAID_MODE_OFF"
+
+
+class CaptchaType(str, enum.Enum):
+    BUTTON   = "button"
+    EMOJI    = "emoji"
+    MATH     = "math"
+    SEQUENCE = "sequence"
+
+
+class CaptchaStatus(str, enum.Enum):
+    PENDING = "pending"
+    PASSED  = "passed"
+    FAILED  = "failed"
+    EXPIRED = "expired"
+
+
+class RiskHistory(Base):
+    """Har bir tekshirilgan action (join/message/media/...) uchun risk yozuvi."""
+    __tablename__ = "risk_history"
+
+    id:          Mapped[int]            = mapped_column(primary_key=True, autoincrement=True)
+    user_id:     Mapped[int]            = mapped_column(BigInteger, index=True)
+    chat_id:     Mapped[int]            = mapped_column(BigInteger, index=True)
+    action_type: Mapped[SecurityActionType] = mapped_column(Enum(SecurityActionType))
+    risk_score:  Mapped[float]          = mapped_column(Float)
+    decision:    Mapped[SecurityDecision] = mapped_column(Enum(SecurityDecision))
+    factors:     Mapped[str | None]     = mapped_column(Text, nullable=True)  # JSON
+    created_at:  Mapped[datetime]       = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class SecurityLog(Base):
+    """JOIN/LEAVE/BAN/MUTE/DELETE/FORWARD_BLOCK/LINK_BLOCK/RAID/SPAM/CAPTCHA_FAIL jurnali."""
+    __tablename__ = "security_logs"
+
+    id:         Mapped[int]              = mapped_column(primary_key=True, autoincrement=True)
+    chat_id:    Mapped[int]               = mapped_column(BigInteger, index=True)
+    user_id:    Mapped[int | None]        = mapped_column(BigInteger, nullable=True, index=True)
+    event_type: Mapped[SecurityEventType] = mapped_column(Enum(SecurityEventType), index=True)
+    message_id: Mapped[int | None]        = mapped_column(BigInteger, nullable=True)
+    details:    Mapped[str | None]        = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime]          = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class CaptchaSession(Base):
+    """Join-captcha holati. Timeout — settings.CAPTCHA_TIMEOUT_SECONDS (60s)."""
+    __tablename__ = "captcha_sessions"
+
+    id:             Mapped[int]           = mapped_column(primary_key=True, autoincrement=True)
+    chat_id:        Mapped[int]           = mapped_column(BigInteger, index=True)
+    user_id:        Mapped[int]           = mapped_column(BigInteger, index=True)
+    captcha_type:   Mapped[CaptchaType]   = mapped_column(Enum(CaptchaType))
+    correct_answer: Mapped[str]           = mapped_column(String(64))
+    options:        Mapped[str | None]    = mapped_column(Text, nullable=True)  # JSON
+    message_id:     Mapped[int | None]    = mapped_column(BigInteger, nullable=True)
+    status:         Mapped[CaptchaStatus] = mapped_column(Enum(CaptchaStatus), default=CaptchaStatus.PENDING)
+    attempts:       Mapped[int]           = mapped_column(Integer, default=0)
+    created_at:     Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at:     Mapped[datetime]      = mapped_column(DateTime)
+
+
+class TrustScoreLog(Base):
+    """Trust Score o'zgarishlari tarixi — audit uchun (nima uchun, qachon)."""
+    __tablename__ = "trust_scores"
+
+    id:         Mapped[int]        = mapped_column(primary_key=True, autoincrement=True)
+    user_id:    Mapped[int]        = mapped_column(BigInteger, index=True)
+    chat_id:    Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    delta:      Mapped[float]      = mapped_column(Float)
+    reason:     Mapped[str]        = mapped_column(String(255))
+    old_score:  Mapped[float]      = mapped_column(Float)
+    new_score:  Mapped[float]      = mapped_column(Float)
+    created_at: Mapped[datetime]   = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class RaidLog(Base):
+    """Anti-Raid Engine — 5 sekundda 10+ join aniqlanganda yoziladi."""
+    __tablename__ = "raid_logs"
+
+    id:          Mapped[int]            = mapped_column(primary_key=True, autoincrement=True)
+    chat_id:     Mapped[int]             = mapped_column(BigInteger, index=True)
+    started_at:  Mapped[datetime]        = mapped_column(DateTime, default=datetime.utcnow)
+    ended_at:    Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    join_count:  Mapped[int]             = mapped_column(Integer)
+    joined_user_ids: Mapped[str | None]  = mapped_column(Text, nullable=True)  # JSON list
+    is_active:   Mapped[bool]            = mapped_column(Boolean, default=True)
+    ended_by:    Mapped[int | None]      = mapped_column(BigInteger, nullable=True)  # None = avtomatik

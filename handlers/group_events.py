@@ -32,12 +32,14 @@ GURUH XAVFSIZLIGI QOIDALARI:
 from __future__ import annotations
 
 import json
+import re as _re
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import (
     CallbackQuery,
     ChatMemberUpdated,
+    ChatPermissions,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -60,8 +62,10 @@ from database.db import get_session
 from database.models import (
     ActionType, Admin, AdminRole, AuditLog,
     ProtectedGroup, ProtectedPost,
+    SecurityActionType, SecurityDecision,
 )
 from middlewares.role_check import get_admin_role
+from security.engine import SecurityEngine
 from utils.logger import logger
 from utils.redis_client import redis_client
 
@@ -73,6 +77,7 @@ _analyzer = ContentAnalyzer(
 )
 _decision = DecisionMatrix()
 _behavior = BehaviorEngine(redis_client)
+_security_engine = SecurityEngine(redis_client)
 
 MIN_TEXT_LEN = 15
 
@@ -98,6 +103,83 @@ async def _is_protected_group(chat_id: int) -> bool:
 
 async def _is_admin(user_id: int) -> bool:
     return (await get_admin_role(user_id)) is not None
+
+
+_LINK_RE = _re.compile(r"(https?://|t\.me/|@[\w_]{4,})", _re.IGNORECASE)
+
+
+async def _run_security_risk_check(
+    bot: Bot, message: Message, user, action_type: SecurityActionType,
+) -> bool:
+    """
+    Security Engine (v3) — Trust Score / Risk Analyzer / Suspicious Monitor
+    orqali xulq-atvor asosidagi tekshiruv. Kontent-hash asosidagi leak
+    tekshiruvidan MUSTAQIL ishlaydi (parallel signal).
+
+    True qaytarsa — chaqiruvchi handler DARHOL to'xtashi kerak (AUTO_BAN
+    yoki TEMPORARY_RESTRICT allaqachon qo'llanildi).
+    """
+    text = message.text or message.caption or ""
+    is_link = bool(_LINK_RE.search(text))
+    is_forward = message.forward_origin is not None or message.forward_from is not None
+    is_mention = bool(message.entities and any(e.type == "mention" for e in message.entities))
+
+    effective_action = action_type
+    if action_type == SecurityActionType.MESSAGE:
+        if is_forward:
+            effective_action = SecurityActionType.FORWARD
+        elif is_link:
+            effective_action = SecurityActionType.LINK
+        elif is_mention:
+            effective_action = SecurityActionType.MENTION
+
+    try:
+        evaluation = await _security_engine.evaluate_action(
+            message.chat.id, user.id, effective_action,
+            is_link=is_link, is_forward=is_forward, is_mention=is_mention,
+            message_text=text or None,
+        )
+    except Exception as exc:  # Security Engine xatosi asosiy leak-himoyani to'xtatmasin
+        logger.error(f"[security] risk-check xato: {exc}")
+        return False
+
+    if evaluation.decision == SecurityDecision.AUTO_BAN:
+        await _do_ban(
+            bot=bot, user_id=user.id, chat_id=message.chat.id, message=message,
+            reason="Security Engine: xulq-atvor risk score 100+",
+            evidence={"risk_score": evaluation.risk_score, "factors": evaluation.breakdown},
+            risk_score=evaluation.risk_score,
+        )
+        return True
+
+    if evaluation.decision == SecurityDecision.TEMPORARY_RESTRICT:
+        try:
+            await bot.restrict_chat_member(
+                message.chat.id, user.id,
+                permissions=ChatPermissions(can_send_messages=False),
+            )
+        except TelegramAPIError as exc:
+            logger.warning(f"[security] restrict xato: {exc}")
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
+        return True
+
+    if evaluation.decision == SecurityDecision.ADMIN_ALERT:
+        text_alert = (
+            "⚠️ <b>Admin Alert (Security Engine)</b>\n\n"
+            f"💬 Chat: <code>{message.chat.id}</code>\n"
+            f"👤 User: <code>{user.id}</code>\n"
+            f"📊 Risk score: <b>{evaluation.risk_score}</b>"
+        )
+        for admin_id in settings.super_admins:
+            try:
+                await bot.send_message(admin_id, text_alert)
+            except TelegramAPIError:
+                pass
+
+    return False
 
 
 async def _get_text_posts() -> list[tuple[int, str, str | None]]:
@@ -480,6 +562,10 @@ async def on_group_text(message: Message, bot: Bot) -> None:
 
     text = message.text
 
+    # ── 0. Security Engine — xulq-atvor asosidagi risk-tekshiruv ──────────────
+    if await _run_security_risk_check(bot, message, user, SecurityActionType.MESSAGE):
+        return
+
     # ── 1. Spam / reklama tekshiruvi ──────────────────────────────────────────
     spam_result = detect_spam_in_text(text)
     if await _handle_spam_result(bot, spam_result, message):
@@ -585,6 +671,10 @@ async def on_group_media(message: Message, bot: Bot) -> None:
         return
 
     caption = message.caption
+
+    # ── 0. Security Engine — xulq-atvor asosidagi risk-tekshiruv ──────────────
+    if await _run_security_risk_check(bot, message, user, SecurityActionType.MEDIA):
+        return
 
     # ── 1. Caption spam tekshiruvi ────────────────────────────────────────────
     if caption:

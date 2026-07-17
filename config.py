@@ -60,6 +60,51 @@ class Settings(BaseSettings):
     # Admin confirm chegarasi (bu va yuqori, avtoban dan past → confirm)
     SPAM_CONFIRM_CONFIDENCE:    float = 0.60
 
+    # ── Security Engine (v3) — global default'lar ──────────────────────────────
+    # Har guruh uchun bu qiymatlar ProtectedGroup jadvalida override qilinadi
+    # (/security_settings komandasi orqali); shu yerdagilar — yangi guruh
+    # qo'shilganda ishlatiladigan boshlang'ich (default) qiymatlar.
+    SECURITY_TRUST_SCORE_INITIAL: float = 100.0
+
+    # Risk Analyzer chegaralari (0-100 risk score → harakat)
+    SECURITY_RISK_ADMIN_ALERT: int = 70
+    SECURITY_RISK_TEMP_RESTRICT: int = 90
+    SECURITY_RISK_AUTO_BAN: int = 100
+
+    # Trust Score default chegarasi — shundan past bo'lsa foydalanuvchi
+    # "past ishonch" deb belgilanadi va qattiqroq tekshiriladi.
+    SECURITY_TRUST_THRESHOLD_DEFAULT: int = 40
+
+    # Anti-Raid Engine: N sekund ichida M+ join → Raid Mode
+    RAID_WINDOW_SECONDS: int = 5
+    RAID_JOIN_THRESHOLD: int = 10
+    # Raid Mode yoqilganda avtomatik cheklanadigan harakatlar
+    RAID_MODE_FORCE_CAPTCHA: bool = True
+    RAID_MODE_BLOCK_MEDIA: bool = True
+    RAID_MODE_BLOCK_LINKS: bool = True
+    RAID_MODE_BLOCK_FORWARDS: bool = True
+
+    # Captcha System
+    CAPTCHA_TIMEOUT_SECONDS: int = 60
+    CAPTCHA_MAX_ATTEMPTS: int = 3
+    CAPTCHA_KICK_ON_FAIL: bool = True
+
+    # Suspicious User Monitor
+    SUSPICIOUS_MANY_GROUPS_THRESHOLD: int = 5      # 24 soatda nechta guruhga qo'shilsa shubhali
+    SUSPICIOUS_FLOOD_MSG_PER_10S: int = 8           # 10s ichida nechta xabar → flood
+    SUSPICIOUS_DUPLICATE_MSG_COUNT: int = 3         # ketma-ket bir xil xabar soni
+    SUSPICIOUS_SILENT_WATCH_DAYS: int = 14          # necha kun gapirmasa "faqat kuzatuvchi"
+
+    # Trust Score o'zgarish og'irliklari (harakat → ball)
+    TRUST_PENALTY_NEW_ACCOUNT: float = 15.0
+    TRUST_PENALTY_NO_USERNAME: float = 5.0
+    TRUST_PENALTY_NO_PHOTO: float = 5.0
+    TRUST_PENALTY_CAPTCHA_FAIL: float = 20.0
+    TRUST_PENALTY_SPAM: float = 30.0
+    TRUST_PENALTY_WARNING: float = 10.0
+    TRUST_BONUS_CAPTCHA_PASS: float = 5.0
+    TRUST_BONUS_ADMIN_APPROVED: float = 100.0  # amalda 100 gacha to'ldiradi
+
     # ── Monitoring ────────────────────────────────────────────────────────────
     METRICS_ENABLED: bool = True
     METRICS_PORT: int = 9090

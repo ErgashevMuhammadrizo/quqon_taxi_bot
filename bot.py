@@ -19,7 +19,7 @@ from aiohttp import web
 
 from config import settings
 from database.db import init_models
-from handlers import admin, channel_events, group_events
+from handlers import admin, channel_events, group_events, security_events
 from handlers.start import router as start_router
 from handlers.onboarding import router as onboarding_router, set_role_commands
 from middlewares.rate_limit import ThrottlingMiddleware
@@ -69,7 +69,8 @@ async def create_dispatcher() -> Dispatcher:
     dp.include_router(start_router)           # /start, /help
     dp.include_router(onboarding_router)      # FSM: add_admin, add_channel, add_group
     dp.include_router(channel_events.router)  # kanal postlari + my_chat_member
-    dp.include_router(group_events.router)    # guruh xabarlari + my_chat_member
+    dp.include_router(group_events.router)    # guruh xabarlari + my_chat_member (+ Security Engine risk-check)
+    dp.include_router(security_events.router) # join / captcha / raid (Security Engine v3)
     dp.include_router(admin.router)           # barcha admin komandalar
 
     return dp
@@ -169,6 +170,41 @@ async def _run_metrics_server() -> None:
         await asyncio.sleep(3600)
 
 
+# ─── Captcha expiry worker (Security Engine v3) ───────────────────────────────
+
+async def _run_captcha_expiry_worker(bot: Bot) -> None:
+    """
+    Har 10 soniyada muddati o'tgan (PENDING, expires_at < now) captcha
+    sessiyalarini FAILED qiladi va foydalanuvchini kick qiladi (6-band:
+    "Timeout 60 sec, Fail -> Kick").
+    """
+    from aiogram.exceptions import TelegramAPIError
+    from security.captcha import captcha_manager
+    from security.engine import SecurityEngine
+    from utils.redis_client import redis_client
+
+    engine = SecurityEngine(redis_client)
+
+    while True:
+        try:
+            expired = await captcha_manager.expire_stale_sessions()
+            for row in expired:
+                try:
+                    await bot.ban_chat_member(row.chat_id, row.user_id)
+                    await bot.unban_chat_member(row.chat_id, row.user_id, only_if_banned=True)
+                except TelegramAPIError as exc:
+                    logger.warning(f"[captcha_worker] kick xato: {exc}")
+                try:
+                    await bot.delete_message(row.chat_id, row.message_id) if row.message_id else None
+                except TelegramAPIError:
+                    pass
+                await engine.on_captcha_result(row.chat_id, row.user_id, False)
+        except Exception as exc:  # pragma: no cover — worker o'zi to'xtamasin
+            logger.error(f"[captcha_worker] xato: {exc}")
+
+        await asyncio.sleep(10)
+
+
 # ─── Graceful stop ────────────────────────────────────────────────────────────
 
 async def _graceful_stop(dp: Dispatcher, bot: Bot) -> None:
@@ -196,6 +232,7 @@ async def _run_polling(bot: Bot, dp: Dispatcher) -> None:
             dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types()),
             name="polling",
         ),
+        asyncio.create_task(_run_captcha_expiry_worker(bot), name="captcha_expiry"),
     ]
     if settings.METRICS_ENABLED:
         tasks.append(asyncio.create_task(_run_metrics_server(), name="metrics"))
@@ -241,6 +278,13 @@ def run_webhook() -> None:
         app.router.add_get(settings.HEALTH_PATH, health_http_handler)
         if settings.METRICS_ENABLED:
             app.router.add_get("/metrics", metrics_http_handler)
+
+        async def _start_captcha_worker(_app: web.Application) -> None:
+            _app["captcha_worker_task"] = asyncio.create_task(
+                _run_captcha_expiry_worker(bot), name="captcha_expiry"
+            )
+
+        app.on_startup.append(_start_captcha_worker)
 
         web.run_app(app, host=settings.WEBAPP_HOST, port=settings.WEBAPP_PORT)
 

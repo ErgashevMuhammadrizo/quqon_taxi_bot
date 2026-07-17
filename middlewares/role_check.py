@@ -34,6 +34,7 @@ COMMAND_MIN_ROLE: dict[str, AdminRole] = {
     "start":          AdminRole.VIEWER,
     "help":           AdminRole.VIEWER,
     "stats":          AdminRole.VIEWER,
+    "statistics":     AdminRole.VIEWER,
     "scan_history":   AdminRole.VIEWER,
     "banned":         AdminRole.VIEWER,
     # Moderator va yuqori
@@ -45,6 +46,7 @@ COMMAND_MIN_ROLE: dict[str, AdminRole] = {
     "add_group":      AdminRole.MODERATOR,
     "channels":       AdminRole.MODERATOR,
     "groups":         AdminRole.MODERATOR,
+    "security_settings": AdminRole.MODERATOR,
     # Faqat SUPER_ADMIN
     "settings":       AdminRole.SUPER_ADMIN,
     "add_admin":      AdminRole.SUPER_ADMIN,

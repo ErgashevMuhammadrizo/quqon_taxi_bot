@@ -276,30 +276,27 @@ async def health_http_handler(request) -> "aiohttp.web.Response":
 
 
 async def _refresh_subscription_gauges() -> None:
-    """
-    Obuna gauge'larini yangilaydi.
-
-    Eslatma: models.py da hozircha Subscription jadvali yo'q.
-    Bu funksiya kelajakdagi obuna tizimi uchun zaxirada qoldirilgan.
-    Joriy versiyada xatosiz o'tib ketadi.
-    """
-    # models.py da Subscription modeli mavjud bo'lmasa — jim o'tamiz
-    try:
-        from database.models import Subscription  # type: ignore[attr-defined]
-    except ImportError:
-        return
-
+    """Obuna gauge'larini DB dan yangilaydi."""
     from sqlalchemy import select, func
     from database.db import get_session
+    from database.models import Subscription, SubscriptionStatus, SubscriptionPlan
     from datetime import datetime
 
     async with get_session() as session:
         result = await session.execute(
             select(Subscription.plan, func.count(Subscription.id))
+            .where(
+                Subscription.status == SubscriptionStatus.ACTIVE,
+                (Subscription.expires_at == None)  # noqa: E711
+                | (Subscription.expires_at > datetime.utcnow()),
+            )
             .group_by(Subscription.plan)
         )
         counts = result.all()
 
+    # Avval hammasini 0 ga tushiramiz
+    for plan in SubscriptionPlan:
+        metrics.active_subscriptions.labels(plan=plan.value).set(0)
+    # Keyin haqiqiy qiymatlarni qo'yamiz
     for plan, count in counts:
-        plan_val = plan.value if hasattr(plan, "value") else str(plan)
-        metrics.active_subscriptions.labels(plan=plan_val).set(count)
+        metrics.active_subscriptions.labels(plan=plan.value).set(count)

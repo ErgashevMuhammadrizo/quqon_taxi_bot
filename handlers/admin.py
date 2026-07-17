@@ -5,6 +5,8 @@ Barcha admin komandalar. RBAC middlewares/role_check.py orqali tekshiriladi.
 
 Komandalar:
   /stats            — umumiy statistika (banlar, tekshiruvlar, kanallar, guruhlar)
+  /statistics       — Security Dashboard (join/ban/mute/raid/captcha, 24 soat)
+  /security_settings <chat_id> — guruh xavfsizlik sozlamalarini ko'rish/o'zgartirish
   /banned [sahifa]  — ban ro'yxati (sahifali)
   /unban <id> <cid> — blokdan chiqarish
   /whitelist        — ko'rish | add <id> | remove <id>
@@ -87,6 +89,143 @@ async def cmd_stats(message: Message) -> None:
         f"🚫 Banlar (jami):          <b>{total_bans_log}</b>  (hozir aktiv: {total_banned})\n"
         f"🔴 Klon hodisalari:        <b>{total_clones}</b>"
     )
+
+
+# ─── /statistics — Security Dashboard (v3) ────────────────────────────────────
+
+@router.message(Command("statistics"))
+async def cmd_statistics(message: Message, command: CommandObject) -> None:
+    """
+    10-band: Security Dashboard. Argumentsiz — barcha guruhlar bo'yicha
+    umumiy; `/statistics <chat_id>` — bitta guruh uchun.
+    """
+    from security.dashboard import security_dashboard
+
+    chat_id: int | None = None
+    if command.args:
+        try:
+            chat_id = int(command.args.strip())
+        except ValueError:
+            await message.answer("❌ chat_id butun son bo'lishi kerak. Masalan: <code>/statistics -1001234567890</code>")
+            return
+
+    try:
+        stats = await security_dashboard.get_stats(chat_id=chat_id)
+    except Exception as exc:
+        await _db_error(message, exc)
+        return
+
+    header = f" (chat_id={chat_id})" if chat_id else " (barcha guruhlar)"
+    await message.answer(security_dashboard.format_stats(stats).replace(
+        "Security Dashboard</b>", f"Security Dashboard</b>{header}"
+    ))
+
+
+# ─── /security_settings — har guruh uchun sozlamalar (14-band) ───────────────
+
+_SECURITY_TOGGLE_FIELDS = (
+    ("raid_protection_enabled", "Anti-Raid Protection"),
+    ("captcha_enabled", "Captcha"),
+    ("forward_block_enabled", "Forward Block"),
+    ("link_block_enabled", "Link Block"),
+    ("media_block_enabled", "Media Block"),
+    ("ai_detection_enabled", "AI Detection"),
+)
+
+
+@router.message(Command("security_settings"))
+async def cmd_security_settings(message: Message, command: CommandObject) -> None:
+    """
+    `/security_settings <chat_id>` — joriy sozlamalarni ko'rsatadi, tugmalar bilan.
+    Argumentsiz chaqirilsa — foydalanish yo'riqnomasi.
+    """
+    if not command.args:
+        await message.answer(
+            "⚙️ <b>Guruh xavfsizlik sozlamalari</b>\n\n"
+            "Foydalanish: <code>/security_settings &lt;chat_id&gt;</code>\n\n"
+            "Guruh chat_id'sini <code>/groups</code> orqali topishingiz mumkin."
+        )
+        return
+
+    try:
+        chat_id = int(command.args.strip())
+    except ValueError:
+        await message.answer("❌ chat_id butun son bo'lishi kerak.")
+        return
+
+    async with get_session() as session:
+        result = await session.execute(select(ProtectedGroup).where(ProtectedGroup.chat_id == chat_id))
+        group = result.scalar_one_or_none()
+        if group is None:
+            await message.answer("❌ Bu guruh ro'yxatdan o'tmagan (/add_group orqali qo'shing).")
+            return
+        await message.answer(
+            _format_security_settings(group),
+            reply_markup=_security_settings_keyboard(chat_id, group),
+        )
+
+
+def _format_security_settings(group: ProtectedGroup) -> str:
+    lines = [f"⚙️ <b>Xavfsizlik sozlamalari</b> — <code>{group.chat_id}</code>\n"]
+    for field_name, label in _SECURITY_TOGGLE_FIELDS:
+        state = "✅ ON" if getattr(group, field_name) else "❌ OFF"
+        lines.append(f"{label}: <b>{state}</b>")
+    lines.append(f"\nRisk Threshold: <b>{group.risk_threshold}</b>")
+    lines.append(f"Trust Threshold: <b>{group.trust_threshold}</b>")
+    if group.raid_mode_active:
+        lines.append("\n🚨 <b>RAID MODE HOZIR FAOL</b>")
+    return "\n".join(lines)
+
+
+def _security_settings_keyboard(chat_id: int, group: ProtectedGroup) -> InlineKeyboardMarkup:
+    rows = []
+    for field_name, label in _SECURITY_TOGGLE_FIELDS:
+        state = "✅" if getattr(group, field_name) else "❌"
+        rows.append([InlineKeyboardButton(
+            text=f"{state} {label}",
+            callback_data=f"secset:{chat_id}:{field_name}",
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("secset:"))
+async def on_security_setting_toggle(cb: CallbackQuery) -> None:
+    try:
+        _, chat_id_str, field_name = cb.data.split(":", 2)
+        chat_id = int(chat_id_str)
+    except (ValueError, AttributeError):
+        await cb.answer()
+        return
+
+    if field_name not in {f for f, _ in _SECURITY_TOGGLE_FIELDS}:
+        await cb.answer("Noma'lum sozlama.", show_alert=True)
+        return
+
+    role = await get_admin_role(cb.from_user.id)
+    if role is None:
+        await cb.answer("⛔️ Ruxsat yo'q.", show_alert=True)
+        return
+
+    async with get_session() as session:
+        result = await session.execute(select(ProtectedGroup).where(ProtectedGroup.chat_id == chat_id))
+        group = result.scalar_one_or_none()
+        if group is None:
+            await cb.answer("Guruh topilmadi.", show_alert=True)
+            return
+        setattr(group, field_name, not getattr(group, field_name))
+        new_state = getattr(group, field_name)
+
+    await cb.answer("✅ Yangilandi" if new_state else "❌ O'chirildi")
+    async with get_session() as session:
+        result = await session.execute(select(ProtectedGroup).where(ProtectedGroup.chat_id == chat_id))
+        group = result.scalar_one_or_none()
+        try:
+            await cb.message.edit_text(
+                _format_security_settings(group),
+                reply_markup=_security_settings_keyboard(chat_id, group),
+            )
+        except TelegramAPIError:
+            pass
 
 
 # ─── /banned ─────────────────────────────────────────────────────────────────

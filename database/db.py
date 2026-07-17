@@ -90,6 +90,55 @@ async def init_models() -> None:
             except Exception:
                 pass  # enum yo'q yoki allaqachon bor
 
+        # ── Security Engine (v3) — users jadvaliga yangi ustunlar ──────────────
+        v3_users_columns = [
+            ("trust_score",         "FLOAT DEFAULT 100.0"),
+            ("warnings",            "INTEGER DEFAULT 0"),
+            ("mute_count",          "INTEGER DEFAULT 0"),
+            ("ban_count",           "INTEGER DEFAULT 0"),
+            ("join_time",           "TIMESTAMP"),
+            ("last_active_at",      "TIMESTAMP"),
+            ("has_username",        "BOOLEAN DEFAULT FALSE"),
+            ("has_profile_photo",   "BOOLEAN DEFAULT FALSE"),
+            ("captcha_passed",      "BOOLEAN DEFAULT FALSE"),
+            ("is_approved",         "BOOLEAN DEFAULT FALSE"),
+            ("suspicious_score",    "FLOAT DEFAULT 0.0"),
+            ("groups_joined_count", "INTEGER DEFAULT 0"),
+            ("message_count",       "INTEGER DEFAULT 0"),
+        ]
+        for col_name, col_type in v3_users_columns:
+            try:
+                await conn.execute(
+                    __import__("sqlalchemy").text(
+                        f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
+                    )
+                )
+            except Exception:
+                pass
+
+        # ── Security Engine (v3) — protected_groups jadvaliga sozlama ustunlari
+        v3_groups_columns = [
+            ("raid_protection_enabled", "BOOLEAN DEFAULT TRUE"),
+            ("captcha_enabled",         "BOOLEAN DEFAULT TRUE"),
+            ("forward_block_enabled",   "BOOLEAN DEFAULT FALSE"),
+            ("link_block_enabled",      "BOOLEAN DEFAULT TRUE"),
+            ("media_block_enabled",     "BOOLEAN DEFAULT FALSE"),
+            ("ai_detection_enabled",    "BOOLEAN DEFAULT FALSE"),
+            ("risk_threshold",          "INTEGER DEFAULT 70"),
+            ("trust_threshold",         "INTEGER DEFAULT 40"),
+            ("raid_mode_active",        "BOOLEAN DEFAULT FALSE"),
+            ("raid_mode_since",         "TIMESTAMP"),
+        ]
+        for col_name, col_type in v3_groups_columns:
+            try:
+                await conn.execute(
+                    __import__("sqlalchemy").text(
+                        f"ALTER TABLE protected_groups ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
+                    )
+                )
+            except Exception:
+                pass
+
 
 @asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

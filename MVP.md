@@ -1,4 +1,4 @@
-x# GuardBot MVP v2 — Deploy va Foydalanish Qo'llanmasi
+# GuardBot MVP v2 — Deploy va Foydalanish Qo'llanmasi
 
 > **Versiya:** 2.0.0 | **Sana:** 2026-07-07  
 > **Maqsad:** Telegram guruh va kanallarni spam, reklama va kontent sızishidan himoya qiluvchi bot
