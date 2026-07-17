@@ -1,0 +1,40 @@
+# ─── Telegram Bot Framework ───────────────────────────────────────────────────
+aiogram==3.15.0
+
+# ─── HTTP server (webhook + metrics + payment) ────────────────────────────────
+aiohttp==3.10.11
+
+# ─── Config & validation ──────────────────────────────────────────────────────
+pydantic==2.9.2
+pydantic-settings==2.6.1
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+SQLAlchemy==2.0.36
+asyncpg==0.30.0               # async PostgreSQL driver
+alembic==1.14.0               # DB migratsiyalari
+
+# ─── Cache & rate limiting ────────────────────────────────────────────────────
+redis==5.2.1                  # redis.asyncio ichida
+
+# ─── Background jobs (ixtiyoriy, lekin tavsiya etiladi) ──────────────────────
+arq==0.26.1                   # async Redis queue (media analysis jobs)
+
+# ─── Monitoring ───────────────────────────────────────────────────────────────
+prometheus-client==0.21.1     # /metrics endpoint
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+colorlog==6.9.0               # konsolda rangli loglar
+python-json-logger==3.2.1     # JSON structured logs (prod)
+
+# ─── Media analysis (ixtiyoriy, tavsiya etiladi) ──────────────────────────────
+# O'rnatish: pip install Pillow imagehash pytesseract
+# pytesseract uchun tizimda tesseract-ocr o'rnatilishi kerak:
+#   Ubuntu: sudo apt install tesseract-ocr tesseract-ocr-uzb tesseract-ocr-rus
+#   macOS:  brew install tesseract
+Pillow==11.0.0
+imagehash==4.3.1
+pytesseract==0.3.13
+
+# ─── Testing ──────────────────────────────────────────────────────────────────
+pytest==8.3.4
+pytest-asyncio==0.24.0

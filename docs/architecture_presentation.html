@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GuardBot - Telegram Anti-Leak Protection System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            fontFamily: {
+                sans: ['Inter','system-ui','sans-serif'],
+                mono: ['JetBrains Mono','monospace'],
+            },
+            colors: {
+                guard: {50:'#f0f9ff',100:'#e0f2fe',200:'#bae6fd',300:'#7dd3fc',400:'#38bdf8',500:'#0ea5e9',600:'#0284c7',700:'#0369a1',800:'#075985',900:'#0c4a6e',950:'#082f49'},
+                danger: {50:'#fef2f2',100:'#fee2e2',200:'#fecaca',300:'#fca5a5',400:'#f87171',500:'#ef4444',600:'#dc2626',700:'#b91c1c',800:'#991b1b',900:'#7f1d1d'},
+                success: {50:'#f0fdf4',100:'#dcfce7',200:'#bbf7d0',300:'#86efac',400:'#4ade80',500:'#22c55e',600:'#16a34a',700:'#15803d',800:'#166534',900:'#14532d'},
+                dark: {50:'#f8fafc',100:'#f1f5f9',200:'#e2e8f0',300:'#cbd5e1',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a',950:'#020617'},
+            }
+        }
+    }
+}
+</script>
+<style>
+:root{--cursor-x:50%;--cursor-y:50%}
+body{background:#020617;overflow-x:hidden}
+.hero-glow{background:radial-gradient(ellipse 600px 400px at var(--cursor-x) var(--cursor-y),rgba(14,165,233,0.15),transparent 70%);pointer-events:none}
+.grid-pattern{background-image:linear-gradient(rgba(14,165,233,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(14,165,233,0.03) 1px,transparent 1px);background-size:40px 40px}
+.glass-card{background:rgba(15,23,42,0.6);backdrop-filter:blur(20px);border:1px solid rgba(56,189,248,0.08)}
+.glass-card:hover{border-color:rgba(56,189,248,0.2);box-shadow:0 0 40px rgba(14,165,233,0.1)}
+.code-block{background:#0c1220;border:1px solid rgba(56,189,248,0.1)}
+.code-block .line-num{color:#475569;user-select:none}
+.code-block .kw{color:#c084fc}
+.code-block .fn{color:#60a5fa}
+.code-block .str{color:#4ade80}
+.code-block .cls{color:#fbbf24}
+.code-block .cmt{color:#64748b;font-style:italic}
+.code-block .var{color:#f472b6}
+.code-block .num{color:#fb923c}
+.nav-link{position:relative}
+.nav-link::after{content:'';position:absolute;bottom:-4px;left:0;width:0;height:2px;background:#38bdf8;transition:width 0.3s ease}
+.nav-link:hover::after{width:100%}
+.status-dot{animation:pulse-dot 2s ease-in-out infinite}
+@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.8)}}
+.float-animation{animation:float 6s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0px)}50%{transform:translateY(-20px)}}
+.progress-bar{background:linear-gradient(90deg,#0ea5e9,#38bdf8,#22d3ee);background-size:200% 100%;animation:gradient-shift 2s ease infinite}
+@keyframes gradient-shift{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+.shield-pulse{animation:shield-glow 3s ease-in-out infinite}
+@keyframes shield-glow{0%,100%{filter:drop-shadow(0 0 10px rgba(14,165,233,0.3))}50%{filter:drop-shadow(0 0 30px rgba(14,165,233,0.6))}}
+.tab-active{background:rgba(14,165,233,0.15);border:1px solid rgba(56,189,248,0.3);color:#38bdf8}
+.tab-inactive{background:transparent;border:1px solid rgba(100,116,139,0.2);color:#94a3b8}
+.tab-inactive:hover{border-color:rgba(56,189,248,0.2);color:#cbd5e1}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace}
+.badge-pro{background:rgba(14,165,233,0.15);color:#38bdf8;border:1px solid rgba(56,189,248,0.2)}
+.badge-premium{background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(236,72,153,0.15));color:#e879f9;border:1px solid rgba(168,85,247,0.2)}
+.badge-core{background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.2)}
+.section-divider{height:1px;background:linear-gradient(90deg,transparent,rgba(56,189,248,0.2),transparent)}
+.metric-card{background:rgba(15,23,42,0.5);border:1px solid rgba(56,189,248,0.08);transition:all 0.3s ease}
+.metric-card:hover{border-color:rgba(56,189,248,0.2);transform:translateY(-2px)}
+.tech-icon{width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:rgba(14,165,233,0.1);border:1px solid rgba(56,189,248,0.15);border-radius:12px;transition:all 0.3s ease}
+.tech-icon:hover{background:rgba(14,165,233,0.2);border-color:rgba(56,189,248,0.3);transform:scale(1.05)}
+.noise-overlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:0.02;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");z-index:9999}
+.reveal{opacity:0;transform:translateY(30px)}
+.stagger-item{opacity:0;transform:translateY(20px)}
+.tree-line{position:relative}
+.tree-line::before{content:'';position:absolute;left:-20px;top:0;bottom:0;width:1px;background:rgba(56,189,248,0.15)}
+.tree-connector{position:relative}
+.tree-connector::before{content:'';position:absolute;left:-20px;top:14px;width:16px;height:1px;background:rgba(56,189,248,0.15)}
+</style>
+</head>
+<body class="text-slate-300 antialiased">
+<div class="noise-overlay"></div>
+<div class="hero-glow fixed inset-0 z-0"></div>
+
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-slate-800/50 bg-dark-950/80 backdrop-blur-xl">
+<div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-guard-500 to-guard-700 flex items-center justify-center shadow-lg shadow-guard-500/20"><i class="fas fa-shield-halved text-white text-lg"></i></div>
+<div><h1 class="text-white font-bold text-lg tracking-tight">GuardBot</h1><p class="text-xs text-slate-500 font-mono">v2.0.0 PRO</p></div>
+</div>
+<div class="hidden md:flex items-center gap-8">
+<a href="#overview" class="nav-link text-sm text-slate-400 hover:text-white transition-colors">Overview</a>
+<a href="#architecture" class="nav-link text-sm text-slate-400 hover:text-white transition-colors">Architecture</a>
+<a href="#features" class="nav-link text-sm text-slate-400 hover:text-white transition-colors">Features</a>
+<a href="#flow" class="nav-link text-sm text-slate-400 hover:text-white transition-colors">Flow</a>
+<a href="#code" class="nav-link text-sm text-slate-400 hover:text-white transition-colors">Code</a>
+<a href="#stack" class="nav-link text-sm text-slate-400 hover:text-white transition-colors">Stack</a>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-success-500/10 border border-success-500/20">
+<div class="w-2 h-2 rounded-full bg-success-500 status-dot"></div>
+<span class="text-xs text-success-400 font-mono">OPERATIONAL</span>
+</div>
+</div>
+</div>
+</nav>
+
+<section class="relative min-h-screen flex items-center pt-20 grid-pattern">
+<div class="max-w-7xl mx-auto px-6 py-20 w-full">
+<div class="grid lg:grid-cols-2 gap-16 items-center">
+<div class="space-y-8">
+<div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-guard-500/10 border border-guard-500/20">
+<span class="w-2 h-2 rounded-full bg-guard-400 status-dot"></span>
+<span class="text-xs font-mono text-guard-400 tracking-wider">ANTI-LEAK PROTECTION SYSTEM</span>
+</div>
+<h1 class="text-5xl lg:text-7xl font-black text-white leading-tight">Kontentni <span class="text-transparent bg-clip-text bg-gradient-to-r from-guard-400 to-cyan-300">ogirlanishidan</span> himoyalang</h1>
+<p class="text-lg text-slate-400 leading-relaxed max-w-xl">GuardBot - bu Telegram kanal va guruhlaringizdan ma'lumot ogirlanishini real vaqt rejimida aniqlaydigan, avtomatik bloklovchi va to'liq audit trail taqdim etuvchi professional himoya tizimi.</p>
+<div class="flex flex-wrap gap-4">
+<a href="#architecture" class="group px-8 py-4 rounded-xl bg-gradient-to-r from-guard-600 to-guard-500 text-white font-semibold hover:shadow-lg hover:shadow-guard-500/25 transition-all flex items-center gap-2">
+<span>Loyihani Ko'rish</span><i class="fas fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+</a>
+<a href="#code" class="px-8 py-4 rounded-xl border border-slate-700 text-slate-300 font-semibold hover:border-guard-500/50 hover:text-white transition-all flex items-center gap-2">
+<i class="fab fa-github"></i><span>Source Code</span>
+</a>
+</div>
+<div class="flex items-center gap-6 pt-4">
+<div class="flex items-center gap-2 text-sm text-slate-500"><i class="fab fa-python text-guard-400"></i><span>Python 3.12+</span></div>
+<div class="flex items-center gap-2 text-sm text-slate-500"><i class="fas fa-bolt text-guard-400"></i><span>Aiogram 3.x</span></div>
+<div class="flex items-center gap-2 text-sm text-slate-500"><i class="fas fa-database text-guard-400"></i><span>PostgreSQL + Redis</span></div>
+</div>
+</div>
+<div class="relative">
+<div class="relative z-10 glass-card rounded-2xl p-6 space-y-4">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-3">
+<div class="w-3 h-3 rounded-full bg-danger-500"></div>
+<div class="w-3 h-3 rounded-full bg-amber-500"></div>
+<div class="w-3 h-3 rounded-full bg-success-500"></div>
+</div>
+<span class="text-xs font-mono text-slate-500">guardbot_dashboard.py</span>
+</div>
+<div class="grid grid-cols-3 gap-3">
+<div class="metric-card rounded-xl p-4 text-center">
+<div class="text-2xl font-bold text-white" id="metric-protected">12,847</div>
+<div class="text-xs text-slate-500 mt-1">Himoyalangan post</div>
+</div>
+<div class="metric-card rounded-xl p-4 text-center">
+<div class="text-2xl font-bold text-danger-400" id="metric-blocked">1,234</div>
+<div class="text-xs text-slate-500 mt-1">Bloklangan</div>
+</div>
+<div class="metric-card rounded-xl p-4 text-center">
+<div class="text-2xl font-bold text-success-400" id="metric-active">99.9%</div>
+<div class="text-xs text-slate-500 mt-1">Uptime</div>
+</div>
+</div>
+<div class="code-block rounded-xl p-4 space-y-2 max-h-64 overflow-hidden">
+<div class="font-mono text-xs leading-relaxed"><span class="text-slate-600">11:28:01</span> <span class="text-guard-400">[INFO]</span> <span class="text-slate-300">Yangi post tekshiruviga yuborildi</span> <span class="badge badge-pro ml-2">PRO</span></div>
+<div class="font-mono text-xs leading-relaxed"><span class="text-slate-600">11:27:58</span> <span class="text-success-400">[OK]</span> <span class="text-slate-300">Hash match: <span class="text-guard-400">a3f7b2...</span> - Original</span></div>
+<div class="font-mono text-xs leading-relaxed"><span class="text-slate-600">11:27:55</span> <span class="text-amber-400">[WARN]</span> <span class="text-slate-300">Foydalanuvchi <span class="text-amber-400">@leak_user</span> - Forward qildi</span></div>
+<div class="font-mono text-xs leading-relaxed"><span class="text-slate-600">11:27:52</span> <span class="text-danger-400">[BAN]</span> <span class="text-slate-300">ID: <span class="text-danger-400">784512369</span> - Auto-ban applied</span> <span class="badge badge-premium ml-2">PREMIUM</span></div>
+<div class="font-mono text-xs leading-relaxed"><span class="text-slate-600">11:27:50</span> <span class="text-guard-400">[SCAN]</span> <span class="text-slate-300">OCR analiz: 98.7% match</span></div>
+<div class="font-mono text-xs leading-relaxed"><span class="text-slate-600">11:27:48</span> <span class="text-success-400">[OK]</span> <span class="text-slate-300">Watermark tekshiruvi: <span class="text-success-400">PASS</span></span></div>
+</div>
+</div>
+<div class="absolute -top-10 -right-10 w-40 h-40 bg-guard-500/10 rounded-full blur-3xl"></div>
+<div class="absolute -bottom-10 -left-10 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl"></div>
+</div>
+</div>
+</div>
+</section>
+
+<div class="section-divider"></div>
+
+<section id="overview" class="py-24 grid-pattern">
+<div class="max-w-7xl mx-auto px-6">
+<div class="text-center mb-16 reveal">
+<span class="inline-block px-4 py-1.5 rounded-full bg-guard-500/10 border border-guard-500/20 text-guard-400 text-xs font-mono mb-4">OVERVIEW</span>
+<h2 class="text-4xl lg:text-5xl font-bold text-white mb-4">Nima Uchun GuardBot?</h2>
+<p class="text-slate-400 max-w-2xl mx-auto">Telegram kanallaringizdan eksklyuziv kontentni himoyalash uchun qurilgan enterprise-darajadagi yechim</p>
+</div>
+<div class="grid md:grid-cols-3 gap-6">
+<div class="glass-card rounded-2xl p-8 reveal stagger-item">
+<div class="w-14 h-14 rounded-2xl bg-danger-500/10 border border-danger-500/20 flex items-center justify-center mb-6"><i class="fas fa-user-secret text-danger-400 text-2xl"></i></div>
+<h3 class="text-xl font-bold text-white mb-3">Content Leak Detection</h3>
+<p class="text-slate-400 text-sm leading-relaxed">Kanalingizdan forward qilingan, screenshot olingan yoki bot orqali ogirlangan har qanday kontentni real vaqt rejimida aniqlaydi. Hash, OCR, va watermark tekshiruvlari bilan.</p>
+</div>
+<div class="glass-card rounded-2xl p-8 reveal stagger-item">
+<div class="w-14 h-14 rounded-2xl bg-guard-500/10 border border-guard-500/20 flex items-center justify-center mb-6"><i class="fas fa-robot text-guard-400 text-2xl"></i></div>
+<h3 class="text-xl font-bold text-white mb-3">Bot & Account Detection</h3>
+<p class="text-slate-400 text-sm leading-relaxed">Scraper botlar, fake accountlar va avtomatlashtirilgan foydalanuvchilarni behavior analysis, rate limiting va fingerprinting orqali aniqlaydi.</p>
+</div>
+<div class="glass-card rounded-2xl p-8 reveal stagger-item">
+<div class="w-14 h-14 rounded-2xl bg-success-500/10 border border-success-500/20 flex items-center justify-center mb-6"><i class="fas fa-gavel text-success-400 text-2xl"></i></div>
+<h3 class="text-xl font-bold text-white mb-3">Auto-Ban & Audit</h3>
+<p class="text-slate-400 text-sm leading-relaxed">Qoidabuzarni avtomatik bloklaydi, adminlarga batafsil hisobot yuboradi va barcha harakatlarni PostgreSQL bazasida saqlaydi. Hech narsa yo'qolmaydi.</p>
+</div>
+</div>
+<div class="mt-16 glass-card rounded-2xl p-8 reveal">
+<h3 class="text-2xl font-bold text-white mb-8 flex items-center gap-3"><i class="fas fa-crosshairs text-guard-400"></i>Himoya Qiladigan Muammolar</h3>
+<div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+<div class="p-4 rounded-xl bg-dark-900/50 border border-slate-800 hover:border-danger-500/30 transition-colors">
+<div class="flex items-center gap-3 mb-3"><i class="fas fa-share text-danger-400"></i><span class="text-white font-semibold text-sm">Forward Leaks</span></div>
+<p class="text-xs text-slate-500">Postlarni boshqa kanallarga forward qilish</p>
+</div>
+<div class="p-4 rounded-xl bg-dark-900/50 border border-slate-800 hover:border-danger-500/30 transition-colors">
+<div class="flex items-center gap-3 mb-3"><i class="fas fa-camera text-danger-400"></i><span class="text-white font-semibold text-sm">Screenshot Theft</span></div>
+<p class="text-xs text-slate-500">Screenshot olib boshqa joyga joylash</p>
+</div>
+<div class="p-4 rounded-xl bg-dark-900/50 border border-slate-800 hover:border-danger-500/30 transition-colors">
+<div class="flex items-center gap-3 mb-3"><i class="fas fa-spider text-danger-400"></i><span class="text-white font-semibold text-sm">Bot Scrapers</span></div>
+<p class="text-xs text-slate-500">Scraper botlar orqali ma'lumot yig'ish</p>
+</div>
+<div class="p-4 rounded-xl bg-dark-900/50 border border-slate-800 hover:border-danger-500/30 transition-colors">
+<div class="flex items-center gap-3 mb-3"><i class="fas fa-clone text-danger-400"></i><span class="text-white font-semibold text-sm">Clone Channels</span></div>
+<p class="text-xs text-slate-500">Sizning kontentingizni nusxalovchi kanallar</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<div class="section-divider"></div>
+
+<section id="architecture" class="py-24 grid-pattern">
+<div class="max-w-7xl mx-auto px-6">
+<div class="text-center mb-16 reveal">
+<span class="inline-block px-4 py-1.5 rounded-full bg-guard-500/10 border border-guard-500/20 text-guard-400 text-xs font-mono mb-4">ARCHITECTURE</span>
+<h2 class="text-4xl lg:text-5xl font-bold text-white mb-4">Tizim Arxitekturasi</h2>
+<p class="text-slate-400 max-w-2xl mx-auto">Modulli, kengaytiriladigan va production-ready arxitektura</p>
+</div>
+<div class="glass-card rounded-2xl p-8 mb-12 reveal">
+<div class="flex flex-col lg:flex-row gap-8 items-start">
+<div class="flex-1 space-y-4">
+<div class="flex items-center gap-2 mb-4">
+<div class="w-8 h-8 rounded-lg bg-guard-500/20 flex items-center justify-center"><i class="fas fa-satellite-dish text-guard-400 text-sm"></i></div>
+<span class="text-white font-semibold">Entry Layer</span>
+</div>
+<div class="space-y-2">
+<div class="p-3 rounded-lg bg-dark-900/50 border border-slate-800 text-sm"><span class="text-guard-400 font-mono">Telegram Bot API</span><p class="text-xs text-slate-500 mt-1">Webhook / Long Polling</p></div>
+<div class="p-3 rounded-lg bg-dark-900/50 border border-slate-800 text-sm"><span class="text-guard-400 font-mono">Channel Events</span><p class="text-xs text-slate-500 mt-1">New post, edit, delete, forward</p></div>
+<div class="p-3 rounded-lg bg-dark-900/50 border border-slate-800 text-sm"><span class="text-guard-400 font-mono">Group Events</span><p class="text-xs text-slate-500 mt-1">Join, message, media, link</p></div>
+</div>
+</div>
+<div class="hidden lg:flex items-center pt-12"><i class="fas fa-chevron-right text-guard-500 text-xl"></i></div>
+<div class="flex-1 space-y-4">
+<div class="flex items-center gap-2 mb-4">
+<div class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center"><i class="fas fa-cogs text-purple-400 text-sm"></i></div>
+<span class="text-white font-semibold">Core Engine</span>
+</div>
+<div class="space-y-2">
+<div class="p-3 rounded-lg bg-dark-900/50 border border-slate-800 text-sm"><span class="text-purple-400 font-mono">Content Analyzer</span><p class="text-xs text-slate-500 mt-1">Hash, OCR, watermark, similarity</p></div>
+<div class="p-3 rounded-lg bg-dark-900/50 border border-slate-800 text-sm"><span class="text-purple-400 font-mono">Behavior Engine</span><p class="text-xs text-slate-500 mt-1">Pattern detection, anomaly scoring</p></div>
+<div class="p-3 rounded-lg bg-dark-900/50 border border-slate-800 text-sm"><span class="text-purple-400 font-mono">Decision Matrix</span><p class="text-xs text-slate-500 mt-1">Risk scoring, action routing</p></div>
+</div>
+</div>
+<div class="hidden lg:flex items-center pt-12"><i class="fas fa-chevron-right text-guard-500 text-xl"></i></div>
+<div class="flex-1 space-y-4">
+<div class="flex items-center gap-2 mb-4">
+<div class="w-8 h-8 rounded-lg bg-danger-500/20 flex items-center justify-center"><i class="fas fa-shield-halved text-danger-400 text-sm"></i></div>
+<span class="text-white font-semibold">Action Layer</span>
+</div>
+<div class="space-y-2">
+<div class="p-3 rounded-lg bg-dark-900/50 border border-slate-800 text-sm"><span class="text-danger-400 font-mono">Auto-Ban</span><p class="text-xs text-slate-500 mt-1">Instant block + report</p></div>
+<div class="p-3 rounded-lg bg-dark-900/50 border border-slate-800 text-sm"><span class="text-danger-400 font-mono">Alert System</span><p class="text-xs text-slate-500 mt-1">Admin notification + evidence</p></div>
+<div class="p-3 rounded-lg bg-dark-900/50 border border-slate-800 text-sm"><span class="text-danger-400 font-mono">Audit Logger</span><p class="text-xs text-slate-500 mt-1">Full trail to PostgreSQL</p></div>
+</div>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-8 reveal">
+<h3 class="text-xl font-bold text-white mb-6 flex items-center gap-3"><i class="fas fa-folder-tree text-guard-400"></i>Loyiha Tuzilishi</h3>
+<div class="grid md:grid-cols-2 gap-8">
+<div class="space-y-1 font-mono text-sm">
+<div class="flex items-center gap-2 py-1"><i class="fas fa-folder text-guard-400"></i><span class="text-guard-400">guardbot/</span></div>
+<div class="pl-6 flex items-center gap-2 py-1"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">__init__.py</span></div>
+<div class="pl-6 flex items-center gap-2 py-1"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">main.py</span><span class="text-xs text-slate-600"> - Entry point</span></div>
+<div class="pl-6 flex items-center gap-2 py-1"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">config.py</span><span class="text-xs text-slate-600"> - Env + settings</span></div>
+<div class="pl-6 flex items-center gap-2 py-1 tree-line"><i class="fas fa-folder text-guard-400"></i><span class="text-guard-400">core/</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">bot.py</span><span class="text-xs text-slate-600"> - Aiogram dispatcher</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">middleware.py</span><span class="text-xs text-slate-600"> - Throttling, auth</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">scheduler.py</span><span class="text-xs text-slate-600"> - APScheduler jobs</span></div>
+<div class="pl-6 flex items-center gap-2 py-1 tree-line"><i class="fas fa-folder text-guard-400"></i><span class="text-guard-400">handlers/</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">channel.py</span><span class="text-xs text-slate-600"> - Channel events</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">group.py</span><span class="text-xs text-slate-600"> - Group events</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">admin.py</span><span class="text-xs text-slate-600"> - Admin commands</span></div>
+<div class="pl-6 flex items-center gap-2 py-1 tree-line"><i class="fas fa-folder text-guard-400"></i><span class="text-guard-400">services/</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">detector.py</span><span class="text-xs text-slate-600"> - Leak detection engine</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">analyzer.py</span><span class="text-xs text-slate-600"> - Content analysis</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">ban_manager.py</span><span class="text-xs text-slate-600"> - Ban/unban logic</span></div>
+</div>
+<div class="space-y-1 font-mono text-sm">
+<div class="pl-6 flex items-center gap-2 py-1 tree-line"><i class="fas fa-folder text-guard-400"></i><span class="text-guard-400">models/</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">user.py</span><span class="text-xs text-slate-600"> - User ORM model</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">content.py</span><span class="text-xs text-slate-600"> - Content hash model</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">audit.py</span><span class="text-xs text-slate-600"> - Audit log model</span></div>
+<div class="pl-6 flex items-center gap-2 py-1 tree-line"><i class="fas fa-folder text-guard-400"></i><span class="text-guard-400">database/</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">connection.py</span><span class="text-xs text-slate-600"> - SQLAlchemy engine</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">migrations/</span><span class="text-xs text-slate-600"> - Alembic</span></div>
+<div class="pl-6 flex items-center gap-2 py-1 tree-line"><i class="fas fa-folder text-guard-400"></i><span class="text-guard-400">utils/</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">hashing.py</span><span class="text-xs text-slate-600"> - Perceptual hash</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">watermark.py</span><span class="text-xs text-slate-600"> - Invisible watermark</span></div>
+<div class="pl-12 flex items-center gap-2 py-1 tree-connector"><i class="fas fa-file-code text-yellow-500"></i><span class="text-slate-300">ocr.py</span><span class="text-xs text-slate-600"> - Text extraction</span></div>
+<div class="pl-6 flex items-center gap-2 py-1"><i class="fas fa-file text-slate-500"></i><span class="text-slate-300">requirements.txt</span></div>
+<div class="pl-6 flex items-center gap-2 py-1"><i class="fas fa-file text-slate-500"></i><span class="text-slate-300">docker-compose.yml</span></div>
+<div class="pl-6 flex items-center gap-2 py-1"><i class="fas fa-file text-slate-500"></i><span class="text-slate-300">.env.example</span></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<div class="section-divider"></div>
+
+<section id="features" class="py-24 grid-pattern">
+<div class="max-w-7xl mx-auto px-6">
+<div class="text-center mb-16 reveal">
+<span class="inline-block px-4 py-1.5 rounded-full bg-guard-500/10 border border-guard-500/20 text-guard-400 text-xs font-mono mb-4">FEATURES</span>
+<h2 class="text-4xl lg:text-5xl font-bold text-white mb-4">Asosiy Xususiyatlar</h2>
+<p class="text-slate-400 max-w-2xl mx-auto">Har bir funksiya production-grade va kengaytiriladigan</p>
+</div>
+<div class="flex flex-wrap justify-center gap-3 mb-12 reveal">
+<button onclick="showFeature('detection')" id="tab-detection" class="tab-active px-5 py-2.5 rounded-lg text-sm font-medium transition-all"><i class="fas fa-search mr-2"></i>Detection Engine</button>
+<button onclick="showFeature('protection')" id="tab-protection" class="tab-inactive px-5 py-2.5 rounded-lg text-sm font-medium transition-all"><i class="fas fa-shield-halved mr-2"></i>Protection</button>
+<button onclick="showFeature('admin')" id="tab-admin" class="tab-inactive px-5 py-2.5 rounded-lg text-sm font-medium transition-all"><i class="fas fa-user-shield mr-2"></i>Admin Panel</button>
+<button onclick="showFeature('audit')" id="tab-audit" class="tab-inactive px-5 py-2.5 rounded-lg text-sm font-medium transition-all"><i class="fas fa-clipboard-list mr-2"></i>Audit & Logs</button>
+</div>
+
+<div id="feature-detection" class="feature-content">
+<div class="grid lg:grid-cols-2 gap-8">
+<div class="space-y-6">
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-guard-500/10 border border-guard-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-fingerprint text-guard-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Perceptual Hash Matching</h4>
+<p class="text-sm text-slate-400">Rasm va videolarni pHash, dHash, aHash algoritmlari bilan solishtiradi. Kichik ozgarishlarga chidamli - screenshot, crop, compress qilingan ham aniqlaydi.</p>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-eye text-purple-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">OCR Text Analysis</h4>
+<p class="text-sm text-slate-400">Tesseract + EasyOCR bilan rasm ichidagi matnni oqiydi. Screenshot olingan postlarni matn orqali aniqlaydi. Multilingual qollab-quvvatlaydi.</p>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-stamp text-amber-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Invisible Watermark</h4>
+<p class="text-sm text-slate-400">Rasmlarga kozga korinmas watermark (DCT-based) qoshadi. Ogirlangan kontentni watermark orqali manbaiga qaytarib topadi.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-center justify-between mb-4">
+<span class="text-sm font-mono text-guard-400">detection_engine.py</span>
+<span class="badge badge-pro">CORE</span>
+</div>
+<div class="code-block rounded-xl p-4 overflow-x-auto">
+<pre class="font-mono text-xs leading-relaxed"><span class="line-num">01 </span><span class="kw">class</span> <span class="cls">ContentDetector</span>:
+<span class="line-num">02 </span>    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="var">self</span>):
+<span class="line-num">03 </span>        <span class="var">self</span>.hash_store = <span class="cls">PerceptualHashStore</span>()
+<span class="line-num">04 </span>        <span class="var">self</span>.ocr_engine = <span class="cls">OCRAnalyzer</span>()
+<span class="line-num">05 </span>        <span class="var">self</span>.watermarker = <span class="cls">DCTWatermarker</span>()
+<span class="line-num">06 </span>
+<span class="line-num">07 </span>    <span class="kw">async def</span> <span class="fn">analyze</span>(<span class="var">self</span>, <span class="var">message</span>: <span class="cls">Message</span>):
+<span class="line-num">08 </span>        <span class="var">scores</span> = {}
+<span class="line-num">09 </span>
+<span class="line-num">10 </span>        <span class="cmt"># 1. Perceptual Hash Check</span>
+<span class="line-num">11 </span>        <span class="var">scores</span>[<span class="str">'phash'</span>] = <span class="kw">await</span> <span class="var">self</span>.hash_store.compare(
+<span class="line-num">12 </span>            <span class="var">message</span>.photo[<span class="num">-1</span>].file_id
+<span class="line-num">13 </span>        )
+<span class="line-num">14 </span>
+<span class="line-num">15 </span>        <span class="cmt"># 2. OCR Text Extraction</span>
+<span class="line-num">16 </span>        <span class="var">scores</span>[<span class="str">'ocr'</span>] = <span class="kw">await</span> <span class="var">self</span>.ocr_engine.extract(
+<span class="line-num">17 </span>            <span class="var">message</span>.photo[<span class="num">-1</span>].file_id
+<span class="line-num">18 </span>        )
+<span class="line-num">19 </span>
+<span class="line-num">20 </span>        <span class="cmt"># 3. Watermark Verification</span>
+<span class="line-num">21 </span>        <span class="var">scores</span>[<span class="str">'watermark'</span>] = <span class="kw">await</span> <span class="var">self</span>.watermarker.verify(
+<span class="line-num">22 </span>            <span class="var">message</span>.photo[<span class="num">-1</span>].file_id
+<span class="line-num">23 </span>        )
+<span class="line-num">24 </span>
+<span class="line-num">25 </span>        <span class="kw">return</span> <span class="cls">DetectionResult</span>(<span class="var">scores</span>)</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="feature-protection" class="feature-content hidden">
+<div class="grid lg:grid-cols-2 gap-8">
+<div class="space-y-6">
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-danger-500/10 border border-danger-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-ban text-danger-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Auto-Ban System</h4>
+<p class="text-sm text-slate-400">Risk score 80%+ bolsa avtomatik ban. Admin tasdiqlash rejimi ham mavjud. Ban sababi, vaqti, evidence bilan saqlanadi.</p>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-guard-500/10 border border-guard-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-forward text-guard-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Forward Detection</h4>
+<p class="text-sm text-slate-400">Forward qilingan xabarlarni aniqlaydi. Forward qilgan foydalanuvchini ID, vaqti, post ID bilan loglaydi.</p>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-stopwatch text-amber-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Rate Limiting</h4>
+<p class="text-sm text-slate-400">Bir foydalanuvchi 1 daqiqada 5 tadan kop forward qilsa, avtomatik cheklanadi. Scraper botlarni ushlaydi.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-center justify-between mb-4">
+<span class="text-sm font-mono text-guard-400">ban_manager.py</span>
+<span class="badge badge-pro">CORE</span>
+</div>
+<div class="code-block rounded-xl p-4 overflow-x-auto">
+<pre class="font-mono text-xs leading-relaxed"><span class="line-num">01 </span><span class="kw">class</span> <span class="cls">BanManager</span>:
+<span class="line-num">02 </span>    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="var">self</span>, <span class="var">bot</span>: <span class="cls">Bot</span>):
+<span class="line-num">03 </span>        <span class="var">self</span>.bot = <span class="var">bot</span>
+<span class="line-num">04 </span>        <span class="var">self</span>.redis = <span class="cls">Redis</span>().client
+<span class="line-num">05 </span>
+<span class="line-num">06 </span>    <span class="kw">async def</span> <span class="fn">execute_ban</span>(<span class="var">self</span>, <span class="var">user_id</span>: <span class="var">int</span>, <span class="var">chat_id</span>: <span class="var">int</span>,
+<span class="line-num">07 </span>                          <span class="var">reason</span>: <span class="var">str</span>, <span class="var">evidence</span>: <span class="var">dict</span>):
+<span class="line-num">08 </span>        <span class="cmt"># 1. Ban user from chat</span>
+<span class="line-num">09 </span>        <span class="kw">await</span> <span class="var">self</span>.bot.ban_chat_member(
+<span class="line-num">10 </span>            <span class="var">chat_id</span>=<span class="var">chat_id</span>,
+<span class="line-num">11 </span>            <span class="var">user_id</span>=<span class="var">user_id</span>,
+<span class="line-num">12 </span>            <span class="var">revoke_messages</span>=<span class="kw">True</span>
+<span class="line-num">13 </span>        )
+<span class="line-num">14 </span>
+<span class="line-num">15 </span>        <span class="cmt"># 2. Log to database</span>
+<span class="line-num">16 </span>        <span class="kw">await</span> <span class="cls">AuditLog</span>.create(
+<span class="line-num">17 </span>            <span class="var">user_id</span>=<span class="var">user_id</span>,
+<span class="line-num">18 </span>            <span class="var">action</span>=<span class="str">'BAN'</span>,
+<span class="line-num">19 </span>            <span class="var">reason</span>=<span class="var">reason</span>,
+<span class="line-num">20 </span>            <span class="var">evidence</span>=<span class="var">json</span>.dumps(<span class="var">evidence</span>)
+<span class="line-num">21 </span>        )
+<span class="line-num">22 </span>
+<span class="line-num">23 </span>        <span class="cmt"># 3. Notify admins</span>
+<span class="line-num">24 </span>        <span class="kw">await</span> <span class="var">self</span>._notify_admins(<span class="var">user_id</span>, <span class="var">reason</span>, <span class="var">evidence</span>)</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="feature-admin" class="feature-content hidden">
+<div class="grid lg:grid-cols-2 gap-8">
+<div class="space-y-6">
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-guard-500/10 border border-guard-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-terminal text-guard-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Admin Commands</h4>
+<p class="text-sm text-slate-400">/stats, /banned, /whitelist, /settings, /scan_history, /export_logs. Inline keyboard bilan interaktiv boshqaruv.</p>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-users-cog text-purple-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Role-Based Access</h4>
+<p class="text-sm text-slate-400">Super Admin, Moderator, Viewer rollari. Har bir rolla oz huquqlari - ban qilish, korish, sozlamalar ozgartirish.</p>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-bell text-amber-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Real-Time Alerts</h4>
+<p class="text-sm text-slate-400">Har bir hodisa adminlarga darhol xabar yuboriladi. Evidence (screenshot, forward message) bilan birga.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-center justify-between mb-4">
+<span class="text-sm font-mono text-guard-400">admin_panel.py</span>
+<span class="badge badge-premium">PREMIUM</span>
+</div>
+<div class="code-block rounded-xl p-4 overflow-x-auto">
+<pre class="font-mono text-xs leading-relaxed"><span class="line-num">01 </span><span class="kw">class</span> <span class="cls">AdminPanel</span>:
+<span class="line-num">02 </span>    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="var">self</span>):
+<span class="line-num">03 </span>        <span class="var">self</span>.router = <span class="cls">Router</span>()
+<span class="line-num">04 </span>        <span class="var">self</span>._register_handlers()
+<span class="line-num">05 </span>
+<span class="line-num">06 </span>    <span class="kw">def</span> <span class="fn">_register_handlers</span>(<span class="var">self</span>):
+<span class="line-num">07 </span>        <span class="var">self</span>.router.message.register(
+<span class="line-num">08 </span>            <span class="var">self</span>.cmd_stats,
+<span class="line-num">09 </span>            <span class="cls">Command</span>(<span class="str">'stats'</span>),
+<span class="line-num">10 </span>            <span class="cls">AdminFilter</span>()
+<span class="line-num">11 </span>        )
+<span class="line-num">12 </span>        <span class="var">self</span>.router.callback_query.register(
+<span class="line-num">13 </span>            <span class="var">self</span>.show_banned_list,
+<span class="line-num">14 </span>            <span class="cls">F</span>.data == <span class="str">'banned_list'</span>
+<span class="line-num">15 </span>        )
+<span class="line-num">16 </span>
+<span class="line-num">17 </span>    <span class="kw">async def</span> <span class="fn">cmd_stats</span>(<span class="var">self</span>, <span class="var">message</span>: <span class="cls">Message</span>):
+<span class="line-num">18 </span>        <span class="var">stats</span> = <span class="kw">await</span> <span class="cls">StatsService</span>.get_dashboard()
+<span class="line-num">19 </span>        <span class="kw">await</span> <span class="var">message</span>.answer(
+<span class="line-num">20 </span>            <span class="var">stats</span>.format(),
+<span class="line-num">21 </span>            <span class="var">reply_markup</span>=<span class="var">self</span>._stats_keyboard()
+<span class="line-num">22 </span>        )</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="feature-audit" class="feature-content hidden">
+<div class="grid lg:grid-cols-2 gap-8">
+<div class="space-y-6">
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-guard-500/10 border border-guard-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-database text-guard-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">PostgreSQL Audit Trail</h4>
+<p class="text-sm text-slate-400">Har bir hodisa - user ID, action, timestamp, evidence, chat ID bilan PostgreSQL bazasida saqlanadi. SQLAlchemy ORM bilan.</p>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-file-export text-purple-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Export & Reports</h4>
+<p class="text-sm text-slate-400">CSV, JSON, PDF formatlarida hisobotlarni eksport qilish. Kunlik, haftalik, oylik statistika avtomatik yuboriladi.</p>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-history text-amber-400 text-xl"></i></div>
+<div>
+<h4 class="text-white font-bold mb-1">Evidence Storage</h4>
+<p class="text-sm text-slate-400">Forward qilingan xabarlar, screenshotlar, media fayllar cloud storagega saqlanadi. 90 kun davomida saqlanadi.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6">
+<div class="flex items-center justify-between mb-4">
+<span class="text-sm font-mono text-guard-400">audit_log.py</span>
+<span class="badge badge-core">CORE</span>
+</div>
+<div class="code-block rounded-xl p-4 overflow-x-auto">
+<pre class="font-mono text-xs leading-relaxed"><span class="line-num">01 </span><span class="kw">class</span> <span class="cls">AuditLog</span>(<span class="cls">BaseModel</span>):
+<span class="line-num">02 </span>    <span class="var">__tablename__</span> = <span class="str">'audit_logs'</span>
+<span class="line-num">03 </span>
+<span class="line-num">04 </span>    <span class="var">id</span> = <span class="cls">Column</span>(<span class="cls">Integer</span>, <span class="var">primary_key</span>=<span class="kw">True</span>)
+<span class="line-num">05 </span>    <span class="var">user_id</span> = <span class="cls">Column</span>(<span class="cls">BigInteger</span>, <span class="var">nullable</span>=<span class="kw">False</span>)
+<span class="line-num">06 </span>    <span class="var">chat_id</span> = <span class="cls">Column</span>(<span class="cls">BigInteger</span>, <span class="var">nullable</span>=<span class="kw">False</span>)
+<span class="line-num">07 </span>    <span class="var">action</span> = <span class="cls">Column</span>(<span class="cls">String</span>(<span class="num">50</span>), <span class="var">nullable</span>=<span class="kw">False</span>)
+<span class="line-num">08 </span>    <span class="var">reason</span> = <span class="cls">Column</span>(<span class="cls">Text</span>)
+<span class="line-num">09 </span>    <span class="var">evidence</span> = <span class="cls">Column</span>(<span class="cls">JSON</span>)
+<span class="line-num">10 </span>    <span class="var">created_at</span> = <span class="cls">Column</span>(<span class="cls">DateTime</span>, <span class="var">default</span>=<span class="var">datetime</span>.utcnow)
+<span class="line-num">11 </span>
+<span class="line-num">12 </span>    <span class="kw">@classmethod</span>
+<span class="line-num">13 </span>    <span class="kw">async def</span> <span class="fn">get_user_history</span>(<span class="var">cls</span>, <span class="var">user_id</span>: <span class="var">int</span>):
+<span class="line-num">14 </span>        <span class="var">query</span> = <span class="var">select</span>(<span class="var">cls</span>).where(
+<span class="line-num">15 </span>            <span class="var">cls</span>.user_id == <span class="var">user_id</span>
+<span class="line-num">16 </span>        ).order_by(<span class="var">cls</span>.created_at.desc())
+<span class="line-num">17 </span>        <span class="kw">return</span> <span class="kw">await</span> <span class="cls">Database</span>.execute(<span class="var">query</span>)</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<div class="section-divider"></div>
+
+<section id="flow" class="py-24 grid-pattern">
+<div class="max-w-7xl mx-auto px-6">
+<div class="text-center mb-16 reveal">
+<span class="inline-block px-4 py-1.5 rounded-full bg-guard-500/10 border border-guard-500/20 text-guard-400 text-xs font-mono mb-4">FLOW</span>
+<h2 class="text-4xl lg:text-5xl font-bold text-white mb-4">Ish Jarayoni</h2>
+<p class="text-slate-400 max-w-2xl mx-auto">Bot qanday ishlaydi - bosqichma-bosqich</p>
+</div>
+<div class="space-y-6">
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-start gap-6">
+<div class="flex-shrink-0 w-14 h-14 rounded-2xl bg-guard-500/10 border border-guard-500/20 flex items-center justify-center"><span class="text-guard-400 font-bold text-xl">01</span></div>
+<div class="flex-1">
+<h4 class="text-white font-bold text-lg mb-2">Kanalga Post Yuboriladi</h4>
+<p class="text-slate-400 text-sm mb-4">Admin yoki avtomatlashtirish tizimi kanalga yangi post yuboradi. Bot bu postni kuzatib turadi va uning hash, watermark va metadata ma'lumotlarini PostgreSQL bazasiga saqlaydi.</p>
+<div class="flex flex-wrap gap-2">
+<span class="badge badge-pro">pHash</span>
+<span class="badge badge-pro">Watermark</span>
+<span class="badge badge-pro">Metadata</span>
+</div>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-start gap-6">
+<div class="flex-shrink-0 w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center"><span class="text-purple-400 font-bold text-xl">02</span></div>
+<div class="flex-1">
+<h4 class="text-white font-bold text-lg mb-2">Kontent Kuzatuvi Boshlanadi</h4>
+<p class="text-slate-400 text-sm mb-4">Bot kanal va guruhlardagi barcha xabarlarni kuzatadi. Forward qilingan xabarlar, yangi qoshilgan foydalanuvchilar, media fayllar - hammasi real vaqt rejimida tekshiriladi.</p>
+<div class="flex flex-wrap gap-2">
+<span class="badge badge-premium">Forward Monitor</span>
+<span class="badge badge-premium">Join Detection</span>
+<span class="badge badge-premium">Media Scan</span>
+</div>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-start gap-6">
+<div class="flex-shrink-0 w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center"><span class="text-amber-400 font-bold text-xl">03</span></div>
+<div class="flex-1">
+<h4 class="text-white font-bold text-lg mb-2">Aniqlash va Baholash</h4>
+<p class="text-slate-400 text-sm mb-4">Shubhali xabarlar uchta bosqichda tekshiriladi: (1) Perceptual hash solishtirish, (2) OCR matn tahlili, (3) Invisible watermark tekshiruvi. Har bir bosqichdan risk score hosil qilinadi.</p>
+<div class="flex flex-wrap gap-2">
+<span class="badge badge-core">Hash Match</span>
+<span class="badge badge-core">OCR Analysis</span>
+<span class="badge badge-core">Watermark Verify</span>
+</div>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-start gap-6">
+<div class="flex-shrink-0 w-14 h-14 rounded-2xl bg-danger-500/10 border border-danger-500/20 flex items-center justify-center"><span class="text-danger-400 font-bold text-xl">04</span></div>
+<div class="flex-1">
+<h4 class="text-white font-bold text-lg mb-2">Avtomatik Harakatlar</h4>
+<p class="text-slate-400 text-sm mb-4">Risk score 80%+ bolsa - avtomatik ban. 50-80% - admin tasdiqlashiga yuboriladi. 50% dan kam - logga yoziladi. Har bir harakat evidence bilan birga saqlanadi.</p>
+<div class="flex flex-wrap gap-2">
+<span class="badge badge-pro">Auto-Ban</span>
+<span class="badge badge-pro">Admin Review</span>
+<span class="badge badge-pro">Evidence Log</span>
+</div>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-start gap-6">
+<div class="flex-shrink-0 w-14 h-14 rounded-2xl bg-success-500/10 border border-success-500/20 flex items-center justify-center"><span class="text-success-400 font-bold text-xl">05</span></div>
+<div class="flex-1">
+<h4 class="text-white font-bold text-lg mb-2">Hisobot va Audit</h4>
+<p class="text-slate-400 text-sm mb-4">Adminlarga real vaqt rejimida xabar yuboriladi. Barcha hodisalar PostgreSQL bazasida saqlanadi. Kunlik, haftalik va oylik statistika avtomatik yuboriladi.</p>
+<div class="flex flex-wrap gap-2">
+<span class="badge badge-premium">Real-Time Alert</span>
+<span class="badge badge-premium">Audit Trail</span>
+<span class="badge badge-premium">Daily Report</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<div class="section-divider"></div>
+
+<section id="code" class="py-24 grid-pattern">
+<div class="max-w-7xl mx-auto px-6">
+<div class="text-center mb-16 reveal">
+<span class="inline-block px-4 py-1.5 rounded-full bg-guard-500/10 border border-guard-500/20 text-guard-400 text-xs font-mono mb-4">CODE</span>
+<h2 class="text-4xl lg:text-5xl font-bold text-white mb-4">Asosiy Kod Namunalari</h2>
+<p class="text-slate-400 max-w-2xl mx-auto">Production-ready kod parchalari - toza va kengaytiriladigan</p>
+</div>
+<div class="grid lg:grid-cols-2 gap-8">
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-center justify-between mb-4">
+<span class="text-sm font-mono text-guard-400">main.py - Entry Point</span>
+<span class="badge badge-core">CORE</span>
+</div>
+<div class="code-block rounded-xl p-4 overflow-x-auto">
+<pre class="font-mono text-xs leading-relaxed"><span class="line-num">01 </span><span class="kw">import</span> asyncio
+<span class="line-num">02 </span><span class="kw">from</span> aiogram <span class="kw">import</span> Bot, Dispatcher
+<span class="line-num">03 </span><span class="kw">from</span> aiogram.enums <span class="kw">import</span> ParseMode
+<span class="line-num">04 </span><span class="kw">from</span> core.bot <span class="kw">import</span> setup_bot
+<span class="line-num">05 </span><span class="kw">from</span> core.middleware <span class="kw">import</span> setup_middlewares
+<span class="line-num">06 </span><span class="kw">from</span> database.connection <span class="kw">import</span> init_db
+<span class="line-num">07 </span>
+<span class="line-num">08 </span><span class="kw">async def</span> <span class="fn">main</span>():
+<span class="line-num">09 </span>    <span class="cmt"># Initialize database</span>
+<span class="line-num">10 </span>    <span class="kw">await</span> init_db()
+<span class="line-num">11 </span>
+<span class="line-num">12 </span>    <span class="cmt"># Setup bot & dispatcher</span>
+<span class="line-num">13 </span>    bot = <span class="cls">Bot</span>(
+<span class="line-num">14 </span>        token=<span class="var">config</span>.BOT_TOKEN,
+<span class="line-num">15 </span>        parse_mode=<span class="cls">ParseMode</span>.HTML
+<span class="line-num">16 </span>    )
+<span class="line-num">17 </span>    dp = <span class="cls">Dispatcher</span>()
+<span class="line-num">18 </span>
+<span class="line-num">19 </span>    <span class="cmt"># Register handlers & middlewares</span>
+<span class="line-num">20 </span>    setup_middlewares(dp)
+<span class="line-num">21 </span>    <span class="kw">await</span> setup_bot(dp)
+<span class="line-num">22 </span>
+<span class="line-num">23 </span>    <span class="cmt"># Start polling</span>
+<span class="line-num">24 </span>    <span class="kw">await</span> dp.start_polling(bot)
+<span class="line-num">25 </span>
+<span class="line-num">26 </span><span class="kw">if</span> __name__ == <span class="str">'__main__'</span>:
+<span class="line-num">27 </span>    asyncio.run(main())</pre>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-center justify-between mb-4">
+<span class="text-sm font-mono text-guard-400">middleware.py - Throttling</span>
+<span class="badge badge-pro">PRO</span>
+</div>
+<div class="code-block rounded-xl p-4 overflow-x-auto">
+<pre class="font-mono text-xs leading-relaxed"><span class="line-num">01 </span><span class="kw">class</span> <span class="cls">ThrottlingMiddleware</span>(<span class="cls">BaseMiddleware</span>):
+<span class="line-num">02 </span>    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="var">self</span>, rate_limit=<span class="num">1</span>, period=<span class="num">1</span>):
+<span class="line-num">03 </span>        <span class="var">self</span>.rate_limit = rate_limit
+<span class="line-num">04 </span>        <span class="var">self</span>.period = period
+<span class="line-num">05 </span>        <span class="var">self</span>.throttler = <span class="cls">Throttler</span>(rate_limit, period)
+<span class="line-num">06 </span>
+<span class="line-num">07 </span>    <span class="kw">async def</span> <span class="fn">__call__</span>(<span class="var">self</span>, handler, event, data):
+<span class="line-num">08 </span>        <span class="var">user</span> = data.get(<span class="str">'event_from_user'</span>)
+<span class="line-num">09 </span>        <span class="kw">if</span> <span class="kw">not</span> user:
+<span class="line-num">10 </span>            <span class="kw">return</span> <span class="kw">await</span> handler(event, data)
+<span class="line-num">11 </span>
+<span class="line-num">12 </span>        <span class="var">throttled</span> = <span class="kw">await</span> <span class="var">self</span>.throttler.check(user.id)
+<span class="line-num">13 </span>        <span class="kw">if</span> throttled:
+<span class="line-num">14 </span>            <span class="kw">await</span> event.answer(
+<span class="line-num">15 </span>                <span class="str">'Juda kop so'rov. Iltimos kuting...'</span>
+<span class="line-num">16 </span>            )
+<span class="line-num">17 </span>            <span class="kw">return</span>
+<span class="line-num">18 </span>
+<span class="line-num">19 </span>        <span class="kw">return</span> <span class="kw">await</span> handler(event, data)</pre>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-center justify-between mb-4">
+<span class="text-sm font-mono text-guard-400">channel.py - Channel Handler</span>
+<span class="badge badge-core">CORE</span>
+</div>
+<div class="code-block rounded-xl p-4 overflow-x-auto">
+<pre class="font-mono text-xs leading-relaxed"><span class="line-num">01 </span><span class="kw">from</span> aiogram <span class="kw">import</span> Router, F
+<span class="line-num">02 </span><span class="kw">from</span> aiogram.types <span class="kw">import</span> Message
+<span class="line-num">03 </span><span class="kw">from</span> services.detector <span class="kw">import</span> ContentDetector
+<span class="line-num">04 </span><span class="kw">from</span> services.ban_manager <span class="kw">import</span> BanManager
+<span class="line-num">05 </span>
+<span class="line-num">06 </span>router = <span class="cls">Router</span>()
+<span class="line-num">07 </span>detector = <span class="cls">ContentDetector</span>()
+<span class="line-num">08 </span>ban_mgr = <span class="cls">BanManager</span>()
+<span class="line-num">09 </span>
+<span class="line-num">10 </span><span class="kw">@router</span>.channel_post()
+<span class="line-num">11 </span><span class="kw">async def</span> <span class="fn">on_new_post</span>(<span class="var">message</span>: <span class="cls">Message</span>):
+<span class="line-num">12 </span>    <span class="cmt"># Store original content hash</span>
+<span class="line-num">13 </span>    <span class="kw">await</span> detector.store_original(message)
+<span class="line-num">14 </span>
+<span class="line-num">15 </span><span class="kw">@router</span>.message(<span class="cls">F</span>.forward_from_chat)
+<span class="line-num">16 </span><span class="kw">async def</span> <span class="fn">on_forward</span>(<span class="var">message</span>: <span class="cls">Message</span>):
+<span class="line-num">17 </span>    <span class="var">result</span> = <span class="kw">await</span> detector.analyze(message)
+<span class="line-num">18 </span>    <span class="kw">if</span> result.is_leak:
+<span class="line-num">19 </span>        <span class="kw">await</span> ban_mgr.execute_ban(
+<span class="line-num">20 </span>            <span class="var">user_id</span>=message.from_user.id,
+<span class="line-num">21 </span>            <span class="var">chat_id</span>=message.chat.id,
+<span class="line-num">22 </span>            <span class="var">reason</span>=<span class="str">'Content leak detected'</span>,
+<span class="line-num">23 </span>            <span class="var">evidence</span>=result.to_dict()
+<span class="line-num">24 </span>        )</pre>
+</div>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal">
+<div class="flex items-center justify-between mb-4">
+<span class="text-sm font-mono text-guard-400">config.py - Settings</span>
+<span class="badge badge-pro">PRO</span>
+</div>
+<div class="code-block rounded-xl p-4 overflow-x-auto">
+<pre class="font-mono text-xs leading-relaxed"><span class="line-num">01 </span><span class="kw">from</span> pydantic_settings <span class="kw">import</span> BaseSettings
+<span class="line-num">02 </span><span class="kw">from</span> pydantic <span class="kw">import</span> Field
+<span class="line-num">03 </span>
+<span class="line-num">04 </span><span class="kw">class</span> <span class="cls">Settings</span>(<span class="cls">BaseSettings</span>):
+<span class="line-num">05 </span>    BOT_TOKEN: <span class="var">str</span> = <span class="cls">Field</span>(..., env=<span class="str">'BOT_TOKEN'</span>)
+<span class="line-num">06 </span>    DATABASE_URL: <span class="var">str</span> = <span class="cls">Field</span>(
+<span class="line-num">07 </span>        <span class="str">'postgresql+asyncpg://...'</span>,
+<span class="line-num">08 </span>        env=<span class="str">'DATABASE_URL'</span>
+<span class="line-num">09 </span>    )
+<span class="line-num">10 </span>    REDIS_URL: <span class="var">str</span> = <span class="cls">Field</span>(
+<span class="line-num">11 </span>        <span class="str">'redis://localhost:6379'</span>,
+<span class="line-num">12 </span>        env=<span class="str">'REDIS_URL'</span>
+<span class="line-num">13 </span>    )
+<span class="line-num">14 </span>    ADMIN_IDS: <span class="var">list</span>[<span class="var">int</span>] = <span class="cls">Field</span>([], env=<span class="str">'ADMIN_IDS'</span>)
+<span class="line-num">15 </span>    BAN_THRESHOLD: <span class="var">float</span> = <span class="num">0.8</span>
+<span class="line-num">16 </span>    AUTO_BAN: <span class="var">bool</span> = <span class="kw">True</span>
+<span class="line-num">17 </span>
+<span class="line-num">18 </span>    <span class="kw">class</span> <span class="cls">Config</span>:
+<span class="line-num">19 </span>        env_file = <span class="str">'.env'</span>
+<span class="line-num">20 </span>
+<span class="line-num">21 </span>config = <span class="cls">Settings</span>()</pre>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<div class="section-divider"></div>
+
+<section id="stack" class="py-24 grid-pattern">
+<div class="max-w-7xl mx-auto px-6">
+<div class="text-center mb-16 reveal">
+<span class="inline-block px-4 py-1.5 rounded-full bg-guard-500/10 border border-guard-500/20 text-guard-400 text-xs font-mono mb-4">TECH STACK</span>
+<h2 class="text-4xl lg:text-5xl font-bold text-white mb-4">Texnologiya Stack</h2>
+<p class="text-slate-400 max-w-2xl mx-auto">Har bir komponent eng zo'r va sinovdan o'tgan yechim</p>
+</div>
+<div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="tech-icon mb-4"><i class="fab fa-python text-guard-400 text-xl"></i></div>
+<h4 class="text-white font-bold mb-2">Python 3.12+</h4>
+<p class="text-slate-400 text-sm">Asosiy til. Async/await, type hints, dataclasses bilan toza kod.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="tech-icon mb-4"><i class="fas fa-paper-plane text-guard-400 text-xl"></i></div>
+<h4 class="text-white font-bold mb-2">Aiogram 3.x</h4>
+<p class="text-slate-400 text-sm">Telegram Bot API wrapper. Router-based architecture, middlewares, FSM.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="tech-icon mb-4"><i class="fas fa-database text-guard-400 text-xl"></i></div>
+<h4 class="text-white font-bold mb-2">PostgreSQL 15+</h4>
+<p class="text-slate-400 text-sm">Asosiy ma'lumotlar bazasi. JSONB, full-text search, asyncpg driver.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="tech-icon mb-4"><i class="fas fa-bolt text-guard-400 text-xl"></i></div>
+<h4 class="text-white font-bold mb-2">Redis 7+</h4>
+<p class="text-slate-400 text-sm">Cache, rate limiting, session storage. Ultra-fast in-memory operations.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="tech-icon mb-4"><i class="fas fa-cubes text-purple-400 text-xl"></i></div>
+<h4 class="text-white font-bold mb-2">SQLAlchemy 2.0</h4>
+<p class="text-slate-400 text-sm">ORM + Alembic migrations. Declarative models, async session management.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="tech-icon mb-4"><i class="fas fa-eye text-purple-400 text-xl"></i></div>
+<h4 class="text-white font-bold mb-2">Tesseract + EasyOCR</h4>
+<p class="text-slate-400 text-sm">OCR matn tanish. Multilingual support, high accuracy text extraction.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="tech-icon mb-4"><i class="fas fa-image text-amber-400 text-xl"></i></div>
+<h4 class="text-white font-bold mb-2">Pillow + imagehash</h4>
+<p class="text-slate-400 text-sm">Rasm qayta ishlash va perceptual hash. pHash, dHash, aHash algoritmlari.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 reveal stagger-item">
+<div class="tech-icon mb-4"><i class="fas fa-ship text-amber-400 text-xl"></i></div>
+<h4 class="text-white font-bold mb-2">Docker + Compose</h4>
+<p class="text-slate-400 text-sm">Containerization. Bot, PostgreSQL, Redis bitta compose file'da.</p>
+</div>
+</div>
+<div class="mt-12 glass-card rounded-2xl p-8 reveal">
+<h3 class="text-xl font-bold text-white mb-6">requirements.txt</h3>
+<div class="code-block rounded-xl p-4 overflow-x-auto">
+<pre class="font-mono text-xs leading-relaxed text-slate-300">
+aiogram==3.4.1
+sqlalchemy[asyncio]==2.0.29
+asyncpg==0.29.0
+alembic==1.13.1
+redis==5.0.3
+pydantic-settings==2.2.1
+pillow==10.3.0
+imagehash==4.3.1
+pytesseract==0.3.10
+easyocr==1.7.1
+apscheduler==3.10.4
+python-dotenv==1.0.1
+aiohttp==3.9.3
+</pre>
+</div>
+</div>
+</div>
+</section>
+
+<div class="section-divider"></div>
+
+<section class="py-24 grid-pattern">
+<div class="max-w-7xl mx-auto px-6">
+<div class="glass-card rounded-2xl p-8 reveal">
+<div class="grid lg:grid-cols-2 gap-12 items-center">
+<div>
+<h2 class="text-3xl font-bold text-white mb-4">Qo'shimcha Xavfsizlik</h2>
+<p class="text-slate-400 mb-6">GuardBot faqatgina kontent ogirlanishini emas, balki butunlay kompleks himoya tizimini taqdim etadi.</p>
+<div class="space-y-4">
+<div class="flex items-start gap-4">
+<div class="w-10 h-10 rounded-xl bg-guard-500/10 border border-guard-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-fingerprint text-guard-400"></i></div>
+<div>
+<h4 class="text-white font-semibold text-sm">Device Fingerprinting</h4>
+<p class="text-slate-500 text-xs">Har bir foydalanuvchining unique fingerprinti. Multi-accountingni aniqlaydi.</p>
+</div>
+</div>
+<div class="flex items-start gap-4">
+<div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-brain text-purple-400"></i></div>
+<div>
+<h4 class="text-white font-semibold text-sm">Behavioral Analysis</h4>
+<p class="text-slate-500 text-xs">Botlar va real foydalanuvchilar o'rtasidagi farqni ML orqali aniqlaydi.</p>
+</div>
+</div>
+<div class="flex items-start gap-4">
+<div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-clock text-amber-400"></i></div>
+<div>
+<h4 class="text-white font-semibold text-sm">Time-Based Restrictions</h4>
+<p class="text-slate-500 text-xs">Yangi qo'shilgan foydalanuvchilar 24 soat davomida forward qila olmaydi.</p>
+</div>
+</div>
+<div class="flex items-start gap-4">
+<div class="w-10 h-10 rounded-xl bg-danger-500/10 border border-danger-500/20 flex items-center justify-center flex-shrink-0"><i class="fas fa-link text-danger-400"></i></div>
+<div>
+<h4 class="text-white font-semibold text-sm">Link Filtering</h4>
+<p class="text-slate-500 text-xs">Shubhali linklarni avtomatik bloklaydi. URL reputation check.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="space-y-4">
+<div class="glass-card rounded-xl p-6 border-l-4 border-guard-500">
+<div class="flex items-center justify-between mb-2">
+<span class="text-white font-bold">Risk Score Algorithm</span>
+<span class="badge badge-pro">PRO</span>
+</div>
+<div class="space-y-2">
+<div class="flex items-center justify-between text-sm"><span class="text-slate-400">Perceptual Hash Match</span><span class="text-guard-400 font-mono">30%</span></div>
+<div class="w-full h-2 bg-dark-800 rounded-full overflow-hidden"><div class="progress-bar h-full rounded-full" style="width:30%"></div></div>
+<div class="flex items-center justify-between text-sm"><span class="text-slate-400">OCR Text Similarity</span><span class="text-guard-400 font-mono">25%</span></div>
+<div class="w-full h-2 bg-dark-800 rounded-full overflow-hidden"><div class="progress-bar h-full rounded-full" style="width:25%"></div></div>
+<div class="flex items-center justify-between text-sm"><span class="text-slate-400">Watermark Verification</span><span class="text-guard-400 font-mono">20%</span></div>
+<div class="w-full h-2 bg-dark-800 rounded-full overflow-hidden"><div class="progress-bar h-full rounded-full" style="width:20%"></div></div>
+<div class="flex items-center justify-between text-sm"><span class="text-slate-400">Behavior Score</span><span class="text-guard-400 font-mono">15%</span></div>
+<div class="w-full h-2 bg-dark-800 rounded-full overflow-hidden"><div class="progress-bar h-full rounded-full" style="width:15%"></div></div>
+<div class="flex items-center justify-between text-sm"><span class="text-slate-400">Account Age</span><span class="text-guard-400 font-mono">10%</span></div>
+<div class="w-full h-2 bg-dark-800 rounded-full overflow-hidden"><div class="progress-bar h-full rounded-full" style="width:10%"></div></div>
+</div>
+</div>
+<div class="glass-card rounded-xl p-6">
+<h4 class="text-white font-bold mb-3">Deployment</h4>
+<div class="space-y-2 font-mono text-xs">
+<div class="flex items-center gap-2"><span class="text-guard-400">$</span><span class="text-slate-300">git clone repo.git</span></div>
+<div class="flex items-center gap-2"><span class="text-guard-400">$</span><span class="text-slate-300">cp .env.example .env</span></div>
+<div class="flex items-center gap-2"><span class="text-guard-400">$</span><span class="text-slate-300">docker-compose up -d</span></div>
+<div class="flex items-center gap-2"><span class="text-guard-400">$</span><span class="text-slate-300">docker-compose logs -f bot</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Footer -->
+<footer class="border-t border-slate-800/50 bg-dark-950 py-12">
+<div class="max-w-7xl mx-auto px-6">
+<div class="flex flex-col md:flex-row items-center justify-between gap-6">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-guard-500 to-guard-700 flex items-center justify-center">
+<i class="fas fa-shield-halved text-white text-lg"></i>
+</div>
+<div>
+<h3 class="text-white font-bold">GuardBot</h3>
+<p class="text-xs text-slate-500">Telegram Anti-Leak Protection</p>
+</div>
+</div>
+<div class="flex items-center gap-6 text-sm text-slate-500">
+<a href="#" class="hover:text-guard-400 transition-colors">Documentation</a>
+<a href="#" class="hover:text-guard-400 transition-colors">API Reference</a>
+<a href="#" class="hover:text-guard-400 transition-colors">Changelog</a>
+<a href="#" class="hover:text-guard-400 transition-colors">Support</a>
+</div>
+<div class="text-xs text-slate-600 font-mono">
+v2.0.0 PRO | Built with Python + Aiogram
+</div>
+</div>
+</div>
+</footer>
+
+<script>
+// Mouse glow effect
+document.addEventListener('mousemove', (e) => {
+    document.documentElement.style.setProperty('--cursor-x', e.clientX + 'px');
+    document.documentElement.style.setProperty('--cursor-y', e.clientY + 'px');
+});
+
+// Feature tabs
+function showFeature(featureId) {
+    document.querySelectorAll('.feature-content').forEach(el => el.classList.add('hidden'));
+    document.getElementById('feature-' + featureId).classList.remove('hidden');
+    document.querySelectorAll('[id^="tab-"]').forEach(el => {
+        el.classList.remove('tab-active');
+        el.classList.add('tab-inactive');
+    });
+    document.getElementById('tab-' + featureId).classList.remove('tab-inactive');
+    document.getElementById('tab-' + featureId).classList.add('tab-active');
+}
+
+// GSAP Animations
+gsap.registerPlugin(ScrollTrigger);
+
+gsap.utils.toArray('.reveal').forEach(elem => {
+    gsap.to(elem, {
+        scrollTrigger: {
+            trigger: elem,
+            start: 'top 85%',
+            toggleActions: 'play none none none'
+        },
+        opacity: 1,
+        y: 0,
+        duration: 0.8,
+        ease: 'power3.out'
+    });
+});
+
+gsap.utils.toArray('.stagger-item').forEach((elem, i) => {
+    gsap.to(elem, {
+        scrollTrigger: {
+            trigger: elem,
+            start: 'top 85%',
+            toggleActions: 'play none none none'
+        },
+        opacity: 1,
+        y: 0,
+        duration: 0.6,
+        delay: i * 0.15,
+        ease: 'power3.out'
+    });
+});
+
+// Counter animation
+function animateCounter(id, target, suffix = '') {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let current = 0;
+    const increment = target / 100;
+    const timer = setInterval(() => {
+        current += increment;
+        if (current >= target) {
+            current = target;
+            clearInterval(timer);
+        }
+        el.textContent = Math.floor(current).toLocaleString() + suffix;
+    }, 20);
+}
+
+ScrollTrigger.create({
+    trigger: '#metric-protected',
+    start: 'top 90%',
+    onEnter: () => {
+        animateCounter('metric-protected', 12847);
+        animateCounter('metric-blocked', 1234);
+    },
+    once: true
+});
+
+// Smooth scroll
+ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+});
+</script>
+</body>
+</html>

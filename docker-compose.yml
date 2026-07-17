@@ -1,0 +1,87 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GuardBot MVP v2 — Docker Compose
+#
+# Ishga tushirish:
+#   cp .env.example .env      # tokenlar va parollarni to'ldiring
+#   docker compose up -d      # barcha servislarni background'da ishga tushiradi
+#   docker compose logs -f    # real-time loglar
+#   docker compose down       # to'xtatish
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── GuardBot (main application) ───────────────────────────────────────────
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: guardbot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Docker Compose ichida servislar hostname orqali muloqot qiladi
+      DATABASE_URL: "postgresql+asyncpg://guardbot:${POSTGRES_PASSWORD:-guardbot_pass}@postgres:5432/guardbot"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - guardbot_net
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9090/health')\" 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: guardbot_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: guardbot
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-guardbot_pass}"
+      POSTGRES_DB: guardbot
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guardbot -d guardbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - guardbot_net
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: guardbot_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - guardbot_net
+
+volumes:
+  pg_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  guardbot_net:
+    driver: bridge
