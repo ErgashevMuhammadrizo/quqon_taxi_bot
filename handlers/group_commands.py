@@ -52,15 +52,27 @@ _WARN_LIMIT = 3
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def _is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
-    """Foydalanuvchi Telegram guruh admini yoki GuardBot admini ekanini tekshiradi."""
-    # GuardBot admini
-    if await get_admin_role(user_id) is not None:
-        return True
-    # Telegram guruh admini
+    """
+    Foydalanuvchi shu guruhning Telegram admini yoki GuardBot admini ekanini tekshiradi.
+    Xato bo'lsa ham False qaytarib bot crash qilmaydi.
+    """
+    # 1. GuardBot admini (DB + config) — tezkor tekshiruv, API shart emas
+    try:
+        if await get_admin_role(user_id) is not None:
+            return True
+    except Exception:
+        pass
+
+    # 2. Telegram guruh admini — API chaqiruv
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         return member.status in ("administrator", "creator")
-    except TelegramAPIError:
+    except TelegramAPIError as exc:
+        # Bot guruhda admin emas yoki guruh topilmadi — False qaytaramiz (ban qilmaymiz)
+        logger.debug(f"[group_cmd] get_chat_member xato user={user_id} chat={chat_id}: {exc}")
+        return False
+    except Exception as exc:
+        logger.debug(f"[group_cmd] admin tekshiruvda xato: {exc}")
         return False
 
 
@@ -538,8 +550,28 @@ async def cmd_ginfo(message: Message, command: CommandObject, bot: Bot) -> None:
 async def cmd_gstatus(message: Message, bot: Bot) -> None:
     """/gstatus — bu guruhning himoya holati va statistikasi."""
     caller = message.from_user
-    if not caller or not await _is_group_admin(bot, message.chat.id, caller.id):
-        await _deny(message)
+    if not caller:
+        return
+
+    # Admin tekshiruvi — xato bo'lsa ham javob beramiz
+    is_admin = await _is_group_admin(bot, message.chat.id, caller.id)
+    if not is_admin:
+        # Nima uchun ruxsat yo'qligini aytamiz
+        try:
+            cm = await bot.get_chat_member(message.chat.id, caller.id)
+            tg_role = cm.status
+        except TelegramAPIError:
+            tg_role = "aniqlanmadi"
+        guardbot_role = await get_admin_role(caller.id)
+        await _deny(
+            message,
+            f"⛔️ <b>Ruxsat yo'q</b>\n\n"
+            f"Bu komanda faqat guruh adminlari yoki GuardBot adminlari uchun.\n\n"
+            f"Sizning holatiz:\n"
+            f"• Telegram guruh roli: <b>{tg_role}</b>\n"
+            f"• GuardBot roli: <b>{guardbot_role.value if guardbot_role else 'yo\'q'}</b>\n\n"
+            f"Guruh admini bo'lish uchun guruh sozlamalaridan 'Admin' qilib tayinlang."
+        )
         return
 
     chat_id = message.chat.id
