@@ -49,11 +49,7 @@ class SpamResult:
 
 _TG_LINK_RE = re.compile(
     r"""
-    (?:
-        (?:https?://)?(?:www\.)?(?:t|telegram)\.(?:me|dog)/[\w+\-]+
-        |
-        @[a-zA-Z]\w{3,}
-    )
+    (?:https?://)?(?:www\.)?(?:t|telegram)\.(?:me|dog)/[\w+\-]+
     """,
     re.VERBOSE | re.IGNORECASE,
 )
@@ -198,7 +194,8 @@ class SpamDetector:
     # ── Ichki metodlar ────────────────────────────────────────────────────────
 
     def _check_tg_links(self, text: str) -> SpamResult:
-        """Telegram kanal/guruh linklari va @mention'larini tekshiradi."""
+        """Faqat haqiqiy t.me/telegram.me havolalarini tekshiradi (bare @mention emas —
+        bu alohida _check_mention_with_ad orqali, faqat reklama konteksti bilan tekshiriladi)."""
         matches = _TG_LINK_RE.findall(text)
         if not matches:
             return SpamResult.clean()

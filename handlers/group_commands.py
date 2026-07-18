@@ -46,6 +46,13 @@ router = Router(name="group_commands")
 # Ogohlantirish soni — Redis da saqlaymiz
 _WARN_LIMIT = 3
 
+# Telegram'ning maxsus "GroupAnonymousBot" ID'si — guruhda "Adminlar anonim"
+# rejimi yoqilganda, admin yozgan xabarning from_user.id shu qiymatga teng
+# bo'ladi (haqiqiy user_id EMAS). Telegram bu turdagi xabarlarni faqat
+# haqiqiy adminlarga yuborishga ruxsat beradi, shuning uchun bu ID doim
+# admin sifatida hisoblanishi mumkin.
+ANONYMOUS_ADMIN_ID = 1087968824
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Yordamchi funksiyalar
@@ -55,6 +62,11 @@ async def _is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     """
     Foydalanuvchi shu guruhning Telegram admini yoki GuardBot admini ekanini tekshiradi.
     """
+    # 0. Anonim admin (guruhda "Adminlar anonim" yoqilgan) — Telegram bu
+    #    turdagi xabarlarni faqat haqiqiy adminlarga ruxsat beradi.
+    if user_id == ANONYMOUS_ADMIN_ID:
+        return True
+
     # 1. Config super_admins — eng tezkor, DB shart emas
     from config import settings as cfg
     if user_id in cfg.super_admins:

@@ -1,0 +1,91 @@
+# ═══════════════════════════════════════════════════════════════════
+#   GuardBot — .env konfiguratsiya namunasi
+#   Ko'chirish: cp .env.example .env  →  keyin qiymatlarni to'ldiring
+# ═══════════════════════════════════════════════════════════════════
+
+# ─── Telegram Bot ────────────────────────────────────────────────────────────
+BOT_TOKEN=8808835875:AAHhdK1y49VfQQEdtkMt6_TJOSl9Zlq1i6M
+
+# ─── Super Adminlar ───────────────────────────────────────────────────────────
+# Telegram user_id lar, vergul bilan ajratilgan
+# Aniqlash: @userinfobot yoki @getidsbot ga /start yuboring
+SUPER_ADMIN_IDS=6611338724,552297150,5461761577
+
+# ─── Database (PostgreSQL) ────────────────────────────────────────────────────
+# Docker Compose ichida: postgres service nomi ishlatiladi
+DATABASE_URL=postgresql+asyncpg://guardbot:123@localhost:5432/guardbot
+# ─── Redis ────────────────────────────────────────────────────────────────────
+REDIS_URL=redis://localhost:6379/0
+
+# ─── Himoya sozlamalari ───────────────────────────────────────────────────────
+# 1 daqiqa ichida nechta forward → shubhali
+RATE_LIMIT_FORWARDS=1
+RATE_LIMIT_WINDOW_SECONDS=60
+
+# Risk score chegaralari (0–100)
+AUTO_BAN_RISK_THRESHOLD=80
+ADMIN_CONFIRM_RISK_THRESHOLD=50
+
+# Content tahlil chegaralari (0.0–1.0)
+HASH_SIMILARITY_THRESHOLD=0.92
+OCR_SIMILARITY_THRESHOLD=0.85
+
+# Yangi akkount (bot first_seen_at dan hisoblaydi, kunlarda)
+NEW_ACCOUNT_DAYS_SUSPICIOUS=3
+
+# ─── Risk skoring vaznlari (jami 1.0 bo'lishi kerak) ─────────────────────────
+WEIGHT_FORWARD_HASH=0.30
+WEIGHT_OCR_SIMILARITY=0.25
+WEIGHT_WATERMARK=0.20
+WEIGHT_BEHAVIOR=0.15
+WEIGHT_ACCOUNT_AGE=0.10
+
+# ─── To'lov tizimlari ─────────────────────────────────────────────────────────
+# Payme (bo'sh qoldiring → to'lov webhook'lari o'chiriladi)
+PAYME_MERCHANT_ID=
+PAYME_SECRET_KEY=
+
+# Click
+CLICK_SERVICE_ID=
+CLICK_MERCHANT_ID=
+CLICK_SECRET_KEY=
+
+# ─── Spam / Reklama aniqlash ──────────────────────────────────────────────────
+# Telegram link/mention topilsa ban chegarasi (0.0–1.0)
+# 0.95 = t.me/... yoki @username → darhol ban
+SPAM_TG_LINK_CONFIDENCE=0.95
+
+# Reklama kalit so'z topilsa ban chegarasi
+# 0.85 = yuqori xavf kalit so'z (sotamiz, crypto va h.k.) → darhol ban
+SPAM_AD_KEYWORD_CONFIDENCE=0.85
+
+# Bir xabarda nechta URL'dan boshlab shubhali
+SPAM_MULTI_URL_THRESHOLD=2
+# 2+ URL → darhol ban
+SPAM_MULTI_URL_CONFIDENCE=0.80
+
+# Media + URL → darhol ban (0.85)
+SPAM_MEDIA_LINK_CONFIDENCE=0.85
+
+# Darhol ban chegarasi — bu va undan yuqori confidence → ban (confirm yo'q)
+# 0.60 = hamma spam turi ushbu chegaradan o'tsa ban qilinadi
+SPAM_AUTO_BAN_CONFIDENCE=0.60
+
+# Admin confirm chegarasi — faqat kontent leak uchun (spam uchun ishlatilmaydi)
+# group_events.py da spam uchun confirm yo'q, faqat kontent hash match uchun
+SPAM_CONFIRM_CONFIDENCE=0.60
+
+# ─── Monitoring ───────────────────────────────────────────────────────────────
+METRICS_ENABLED=true
+METRICS_PORT=9090
+HEALTH_PATH=/health
+
+# Clone scanner har qancha sekundda bir tekshiradi (3600 = har soat)
+CLONE_SCAN_INTERVAL_SECONDS=3600
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+# Darajalar: DEBUG | INFO | WARNING | ERROR | CRITICAL
+LOG_LEVEL=INFO
+LOG_FILE=logs/guardbot.log
+
+

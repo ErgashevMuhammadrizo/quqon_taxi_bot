@@ -105,34 +105,24 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
                 logger.info(f"[JOIN] bot={member.id} (@{member.username}) admin sifatida qo'shildi — o'tkazildi.")
                 continue
 
-            # Admin bo'lmagan bot — ogohlantirish yuboramiz
+            # Admin bo'lmagan bot — darhol BAN (doimiy, qayta qo'shila olmasin)
             if pg is not None:
                 bot_ref = f"@{member.username}" if member.username else f"<code>{member.id}</code>"
                 try:
                     await message.delete()
                 except TelegramAPIError:
                     pass
-                # Guruhdan chiqarmoqchi bo'lamiz (kick)
-                try:
-                    await bot.ban_chat_member(chat_id, member.id)
-                    await bot.unban_chat_member(chat_id, member.id, only_if_banned=True)
-                    action_text = "guruhdan chiqarildi (kick)"
-                except TelegramAPIError:
-                    action_text = "chiqarib bo'lmadi (admin huquqi kerak)"
 
-                from config import settings as cfg
-                for admin_id in cfg.super_admins:
-                    try:
-                        await bot.send_message(
-                            admin_id,
-                            f"🤖 <b>Ruxsatsiz bot qo'shildi!</b>\n\n"
-                            f"💬 Guruh: <b>{message.chat.title}</b> (<code>{chat_id}</code>)\n"
-                            f"🤖 Bot: {bot_ref}\n"
-                            f"⚡️ Harakat: {action_text}",
-                        )
-                    except TelegramAPIError:
-                        pass
-                logger.warning(f"[JOIN-BOT] bot={member.id} chat={chat_id} {action_text}")
+                ban_manager = BanManager(bot)
+                banned = await ban_manager.execute_ban(
+                    user_id=member.id,
+                    chat_id=chat_id,
+                    reason="Ruxsatsiz bot guruhga qo'shildi",
+                    evidence={"type": "unauthorized_bot_join", "bot": bot_ref},
+                    risk_score=100.0,
+                )
+                action_text = "ban qilindi (guruhga qayta qo'shila olmaydi)" if banned else "ban qilib bo'lmadi (botga admin huquqi kerak yoki whitelist'da)"
+                logger.warning(f"[JOIN-BOT-BAN] bot={member.id} chat={chat_id} {action_text}")
             continue
 
         # ── 0b. Himoyalangan guruh emasmi? → o'tkazib yuboramiz ──────────────

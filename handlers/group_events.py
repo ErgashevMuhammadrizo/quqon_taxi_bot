@@ -69,6 +69,11 @@ from security.engine import SecurityEngine
 from utils.logger import logger
 from utils.redis_client import redis_client
 
+# Telegram'ning maxsus "GroupAnonymousBot" ID'si — guruhda "Adminlar anonim"
+# rejimi yoqilganda, admin yozgan xabarning from_user.id shu qiymatga teng
+# bo'ladi (haqiqiy user_id EMAS).
+ANONYMOUS_ADMIN_ID = 1087968824
+
 router = Router(name="group_events")
 
 _analyzer = ContentAnalyzer(
@@ -112,6 +117,11 @@ async def _is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     tekshiradi. Ikkalasidan biri rost bo'lsa True qaytaradi.
     Botni spam tekshiruvidan himoya qilish uchun ishlatiladi.
     """
+    # Anonim admin (guruhda "Adminlar anonim" yoqilgan) — Telegram bu
+    # turdagi xabarlarni faqat haqiqiy adminlarga ruxsat beradi.
+    if user_id == ANONYMOUS_ADMIN_ID:
+        return True
+
     # GuardBot admini (DB + config) — tezkor tekshiruv
     if await get_admin_role(user_id) is not None:
         return True
