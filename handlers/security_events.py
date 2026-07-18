@@ -62,31 +62,84 @@ _FULL_PERMISSIONS = ChatPermissions(
 async def on_new_chat_members(message: Message, bot: Bot) -> None:
     """
     Yangi a'zo qo'shilganda DARHOL tekshiruv:
-      1. BannedUser jadvalida bormi? → darhol ban (qaytib kirmoqchi)
-      2. Whitelist'da bormi? → tekshiruvdan o'tkazib yuboramiz
-      3. SecurityEngine evaluate_join → Trust Score / Raid / Captcha
+      0. Bot ekanmi?
+         - Guruhning o'z admini qo'shgan bot → o'tkazib yuborish
+         - Boshqa bot → ogohlantirish (ban qilib bo'lmaydi)
+      1. Whitelist'da bormi? → o'tkazib yuborish
+      2. BannedUser jadvalida bormi? → darhol ban
+      3. SecurityEngine evaluate_join → Risk / Raid / Captcha
+         (xato bo'lsa — jim o'tamiz, bot crash qilmaydi)
     """
     from database.db import get_session
     from database.models import BannedUser, ProtectedGroup, Whitelist
     from sqlalchemy import select as sa_select
 
-    # Bu guruh himoyalangan guruhmi? Tekshiramiz.
+    chat_id = message.chat.id
+
+    # Bu guruh himoyalangan ekanini bir marta tekshiramiz
+    pg = None
     try:
         async with get_session() as s:
             pg = (await s.execute(
                 sa_select(ProtectedGroup).where(
-                    ProtectedGroup.chat_id == message.chat.id,
+                    ProtectedGroup.chat_id == chat_id,
                     ProtectedGroup.is_active == True,  # noqa: E712
                 )
             )).scalar_one_or_none()
-    except Exception:
-        pg = None
+    except Exception as exc:
+        logger.error(f"[JOIN] ProtectedGroup tekshiruvda xato: {exc}")
 
     for member in message.new_chat_members:
+
+        # ── 0a. Bot qo'shildi — admin bot bo'lsa o'tkazib yuboramiz ──────────
         if member.is_bot:
+            # Bot guruhda admin ekanini tekshiramiz
+            is_admin_bot = False
+            try:
+                cm = await bot.get_chat_member(chat_id, member.id)
+                is_admin_bot = cm.status in ("administrator", "creator")
+            except TelegramAPIError:
+                pass
+
+            if is_admin_bot:
+                logger.info(f"[JOIN] bot={member.id} (@{member.username}) admin sifatida qo'shildi — o'tkazildi.")
+                continue
+
+            # Admin bo'lmagan bot — ogohlantirish yuboramiz
+            if pg is not None:
+                bot_ref = f"@{member.username}" if member.username else f"<code>{member.id}</code>"
+                try:
+                    await message.delete()
+                except TelegramAPIError:
+                    pass
+                # Guruhdan chiqarmoqchi bo'lamiz (kick)
+                try:
+                    await bot.ban_chat_member(chat_id, member.id)
+                    await bot.unban_chat_member(chat_id, member.id, only_if_banned=True)
+                    action_text = "guruhdan chiqarildi (kick)"
+                except TelegramAPIError:
+                    action_text = "chiqarib bo'lmadi (admin huquqi kerak)"
+
+                from config import settings as cfg
+                for admin_id in cfg.super_admins:
+                    try:
+                        await bot.send_message(
+                            admin_id,
+                            f"🤖 <b>Ruxsatsiz bot qo'shildi!</b>\n\n"
+                            f"💬 Guruh: <b>{message.chat.title}</b> (<code>{chat_id}</code>)\n"
+                            f"🤖 Bot: {bot_ref}\n"
+                            f"⚡️ Harakat: {action_text}",
+                        )
+                    except TelegramAPIError:
+                        pass
+                logger.warning(f"[JOIN-BOT] bot={member.id} chat={chat_id} {action_text}")
             continue
 
-        # ── 1. Whitelist tekshiruvi — ozod foydalanuvchiga tegmaymiz ──────────
+        # ── 0b. Himoyalangan guruh emasmi? → o'tkazib yuboramiz ──────────────
+        if pg is None:
+            continue
+
+        # ── 1. Whitelist tekshiruvi ───────────────────────────────────────────
         try:
             async with get_session() as s:
                 wl = (await s.execute(
@@ -98,42 +151,37 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
         except Exception:
             pass
 
-        # ── 2. BannedUser jadvalida bormi? Qaytib kirmoqchi → DARHOL BAN ──────
-        if pg is not None:
-            try:
-                async with get_session() as s:
-                    banned_row = (await s.execute(
-                        sa_select(BannedUser).where(
-                            BannedUser.user_id == member.id,
-                            BannedUser.chat_id == message.chat.id,
-                        )
-                    )).scalar_one_or_none()
-                if banned_row:
-                    ban_manager = BanManager(bot)
-                    await ban_manager.execute_ban(
-                        member.id, message.chat.id,
-                        reason="Banlangan foydalanuvchi qaytib kirmoqchi bo'ldi",
-                        evidence={
-                            "type": "rebanned",
-                            "original_ban_reason": banned_row.reason[:200],
-                            "original_ban_at": str(banned_row.banned_at),
-                        },
-                        risk_score=100.0,
+        # ── 2. BannedUser — qaytib kirmoqchi → DARHOL BAN ────────────────────
+        try:
+            async with get_session() as s:
+                banned_row = (await s.execute(
+                    sa_select(BannedUser).where(
+                        BannedUser.user_id == member.id,
+                        BannedUser.chat_id == chat_id,
                     )
-                    # Kirish xabarini o'chiramiz
-                    try:
-                        await message.delete()
-                    except TelegramAPIError:
-                        pass
-                    logger.warning(
-                        f"[JOIN-REBAN] user={member.id} chat={message.chat.id} "
-                        "banlangan foydalanuvchi qaytib kirdi — qayta ban qilindi."
-                    )
-                    continue
-            except Exception as exc:
-                logger.error(f"[JOIN] BannedUser tekshiruvda xato: {exc}")
+                )).scalar_one_or_none()
+            if banned_row:
+                ban_manager = BanManager(bot)
+                await ban_manager.execute_ban(
+                    member.id, chat_id,
+                    reason="Banlangan foydalanuvchi qaytib kirdi",
+                    evidence={
+                        "type": "rebanned",
+                        "original_reason": banned_row.reason[:200],
+                        "original_at": str(banned_row.banned_at),
+                    },
+                    risk_score=100.0,
+                )
+                try:
+                    await message.delete()
+                except TelegramAPIError:
+                    pass
+                logger.warning(f"[JOIN-REBAN] user={member.id} chat={chat_id}")
+                continue
+        except Exception as exc:
+            logger.error(f"[JOIN] BannedUser tekshiruvda xato: {exc}")
 
-        # ── 3. SecurityEngine — Trust Score / Raid / Captcha ─────────────────
+        # ── 3. SecurityEngine — try/except bilan himoyalangan ─────────────────
         has_username = bool(member.username)
         has_photo = False
         try:
@@ -142,41 +190,48 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
         except TelegramAPIError:
             pass
 
-        evaluation = await security_engine.evaluate_join(
-            message.chat.id, member.id,
-            username=member.username, full_name=member.full_name,
-            has_username=has_username, has_photo=has_photo,
-        )
+        try:
+            evaluation = await security_engine.evaluate_join(
+                chat_id, member.id,
+                username=member.username,
+                full_name=member.full_name,
+                has_username=has_username,
+                has_photo=has_photo,
+            )
+        except Exception as exc:
+            logger.error(f"[JOIN] SecurityEngine xato (Redis?): {exc} — o'tkazib yuborildi.")
+            continue
 
         if evaluation.decision == SecurityDecision.AUTO_BAN:
-            # Join da hech qachon avtoban qilmaymiz —
-            # foydalanuvchi hali biror narsa qilmagan, admindan so'raymiz.
+            # Join da hech qachon avtoban emas — admindan so'raymiz
             await _confirm_join_ban(
                 bot=bot,
-                chat_id=message.chat.id,
+                chat_id=chat_id,
                 user_id=member.id,
                 full_name=member.full_name,
                 username=member.username,
                 risk_score=evaluation.risk_score,
                 join_msg_id=message.message_id,
             )
-            # Xabar yuborilguncha vaqtinchalik cheklaymiz (sukut)
-            await _restrict_member(bot, message.chat.id, member.id)
+            await _restrict_member(bot, chat_id, member.id)
             continue
 
         if evaluation.raid.raid_mode_active:
-            await _notify_admins_raid(bot, message.chat.id, evaluation.raid.join_count)
+            await _notify_admins_raid(bot, chat_id, evaluation.raid.join_count)
 
         if evaluation.require_captcha:
-            await _restrict_member(bot, message.chat.id, member.id)
-            await _send_captcha(bot, message.chat.id, member.id, member.full_name)
+            await _restrict_member(bot, chat_id, member.id)
+            await _send_captcha(bot, chat_id, member.id, member.full_name)
         elif evaluation.decision == SecurityDecision.TEMPORARY_RESTRICT:
-            await _restrict_member(bot, message.chat.id, member.id)
-            await audit.log_event(
-                chat_id=message.chat.id, user_id=member.id,
-                event_type=SecurityEventType.TEMP_RESTRICT,
-                details={"risk_score": evaluation.risk_score},
-            )
+            await _restrict_member(bot, chat_id, member.id)
+            try:
+                await audit.log_event(
+                    chat_id=chat_id, user_id=member.id,
+                    event_type=SecurityEventType.TEMP_RESTRICT,
+                    details={"risk_score": evaluation.risk_score},
+                )
+            except Exception:
+                pass
 
 
 async def _restrict_member(bot: Bot, chat_id: int, user_id: int) -> None:

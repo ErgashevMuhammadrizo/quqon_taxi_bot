@@ -109,12 +109,28 @@ _GROUP_ADMIN_COMMANDS: list[BotCommand] = [
 # ─── Yordamchi funksiyalar ────────────────────────────────────────────────────
 
 async def set_role_commands(bot: Bot, chat_id: int, role: AdminRole) -> None:
-    """Foydalanuvchiga rolga mos komandalar menyusini o'rnatadi."""
+    """Foydalanuvchiga rolga mos komandalar menyusini o'rnatadi (private chat)."""
     cmds = _COMMANDS.get(role, [])
     try:
         await bot.set_my_commands(cmds, scope=BotCommandScopeChat(chat_id=chat_id))
     except TelegramAPIError:
-        pass  # foydalanuvchi botga start bermaganligi sababli xato — keyinroq
+        pass
+
+
+async def set_group_admin_commands(bot: Bot) -> None:
+    """
+    Barcha guruh adminlariga ko'rinadigan komandalar menyusini o'rnatadi.
+    BotCommandScopeAllChatAdministrators — guruhda /komanda bosganda
+    faqat admin foydalanuvchilarga ko'rinadi.
+    """
+    try:
+        await bot.set_my_commands(
+            _GROUP_ADMIN_COMMANDS,
+            scope=BotCommandScopeAllChatAdministrators(),
+        )
+        logger.info("Guruh admin komandalar menyusi o'rnatildi.")
+    except TelegramAPIError as exc:
+        logger.warning(f"Guruh admin komandalar o'rnatilmadi: {exc}")
 
 
 async def notify_super_admins(bot: Bot, text: str, exclude: int | None = None) -> None:

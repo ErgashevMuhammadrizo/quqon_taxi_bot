@@ -33,27 +33,32 @@ class BehaviorEngine:
     async def register_forward(self, user_id: int) -> int:
         """
         Foydalanuvchining forward harakatini ro'yxatdan o'tkazadi.
-        Redis sorted-set orqali sliding-window rate limiting qilinadi.
-        Qaytadi: joriy oynadagi forward soni.
+        Redis yo'q bo'lsa 0 qaytaradi (rate limit o'chirilgan holda ishlaydi).
         """
-        key = self._forward_key(user_id)
-        now = time.time()
-        window_start = now - settings.RATE_LIMIT_WINDOW_SECONDS
+        try:
+            key = self._forward_key(user_id)
+            now = time.time()
+            window_start = now - settings.RATE_LIMIT_WINDOW_SECONDS
 
-        pipe = self.redis.pipeline()
-        pipe.zremrangebyscore(key, 0, window_start)          # eski yozuvlarni tozalash
-        pipe.zadd(key, {f"{now}": now})
-        pipe.zcard(key)
-        pipe.expire(key, settings.RATE_LIMIT_WINDOW_SECONDS * 2)
-        _, _, count, _ = await pipe.execute()
-        return int(count)
+            pipe = self.redis.pipeline()
+            pipe.zremrangebyscore(key, 0, window_start)
+            pipe.zadd(key, {f"{now}": now})
+            pipe.zcard(key)
+            pipe.expire(key, settings.RATE_LIMIT_WINDOW_SECONDS * 2)
+            _, _, count, _ = await pipe.execute()
+            return int(count)
+        except Exception:
+            return 0  # Redis yo'q — limitdan o'tmagan deb hisoblaymiz
 
     async def get_forward_count(self, user_id: int) -> int:
-        key = self._forward_key(user_id)
-        now = time.time()
-        window_start = now - settings.RATE_LIMIT_WINDOW_SECONDS
-        await self.redis.zremrangebyscore(key, 0, window_start)
-        return int(await self.redis.zcard(key))
+        try:
+            key = self._forward_key(user_id)
+            now = time.time()
+            window_start = now - settings.RATE_LIMIT_WINDOW_SECONDS
+            await self.redis.zremrangebyscore(key, 0, window_start)
+            return int(await self.redis.zcard(key))
+        except Exception:
+            return 0
 
     def score_forward_rate(self, count: int) -> float:
         """Forward sonini 0..1 shubha skoriga aylantiradi (limit atrofida chiziqli o'sadi)."""
@@ -77,7 +82,10 @@ class BehaviorEngine:
         return 0.1
 
     async def evaluate(self, user_id: int, account_created_days_ago: int | None = None) -> BehaviorScore:
-        count = await self.register_forward(user_id)
+        try:
+            count = await self.register_forward(user_id)
+        except Exception:
+            count = 0
         forward_score = self.score_forward_rate(count)
         age_score = self.score_account_age(account_created_days_ago)
         is_limited = count > settings.RATE_LIMIT_FORWARDS

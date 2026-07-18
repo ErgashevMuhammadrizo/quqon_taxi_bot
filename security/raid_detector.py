@@ -49,17 +49,21 @@ class RaidDetector:
 
     async def register_join(self, chat_id: int, user_id: int) -> int:
         """Join'ni Redis sliding-window'ga qo'shadi, joriy oynadagi join sonini qaytaradi."""
-        key = self._join_key(chat_id)
-        now = time.time()
-        window_start = now - settings.RAID_WINDOW_SECONDS
+        try:
+            key = self._join_key(chat_id)
+            now = time.time()
+            window_start = now - settings.RAID_WINDOW_SECONDS
 
-        pipe = self.redis.pipeline()
-        pipe.zremrangebyscore(key, 0, window_start)
-        pipe.zadd(key, {f"{user_id}:{now}": now})
-        pipe.zcard(key)
-        pipe.expire(key, settings.RAID_WINDOW_SECONDS * 4)
-        _, _, count, _ = await pipe.execute()
-        return int(count)
+            pipe = self.redis.pipeline()
+            pipe.zremrangebyscore(key, 0, window_start)
+            pipe.zadd(key, {f"{user_id}:{now}": now})
+            pipe.zcard(key)
+            pipe.expire(key, settings.RAID_WINDOW_SECONDS * 4)
+            _, _, count, _ = await pipe.execute()
+            return int(count)
+        except Exception as exc:
+            logger.debug(f"[raid_detector] register_join Redis xato: {exc}")
+            return 0
 
     async def is_raid_mode_active(self, chat_id: int) -> bool:
         try:
@@ -68,7 +72,10 @@ class RaidDetector:
             return False
 
     async def activate_raid_mode(self, chat_id: int, join_count: int, joined_user_ids: list[int]) -> None:
-        await self.redis.set(self._mode_key(chat_id), "1")  # admin o'chirmaguncha (TTL yo'q)
+        try:
+            await self.redis.set(self._mode_key(chat_id), "1")
+        except Exception as exc:
+            logger.debug(f"[raid_detector] activate Redis xato: {exc}")
         logger.warning(f"[raid_detector] RAID MODE ON chat={chat_id} joins={join_count}")
 
         try:
@@ -95,7 +102,6 @@ class RaidDetector:
             await self.redis.delete(self._mode_key(chat_id))
         except Exception:
             pass
-        logger.info(f"[raid_detector] RAID MODE OFF chat={chat_id} by={ended_by}")
 
         try:
             from sqlalchemy import select, update
@@ -136,20 +142,26 @@ class RaidDetector:
 
     async def check_join(self, chat_id: int, user_id: int) -> RaidCheckResult:
         """Har yangi join'da chaqiriladi. Threshold oshsa Raid Mode'ni yoqadi."""
-        count = await self.register_join(chat_id, user_id)
-        already_active = await self.is_raid_mode_active(chat_id)
+        try:
+            count = await self.register_join(chat_id, user_id)
+            already_active = await self.is_raid_mode_active(chat_id)
 
-        if not already_active and count >= settings.RAID_JOIN_THRESHOLD:
-            # Oxirgi oynadagi barcha user_id'larni olish
-            key = self._join_key(chat_id)
-            members = await self.redis.zrange(key, 0, -1)
-            user_ids = []
-            for m in members:
+            if not already_active and count >= settings.RAID_JOIN_THRESHOLD:
+                key = self._join_key(chat_id)
                 try:
-                    user_ids.append(int(str(m).split(":")[0]))
-                except (ValueError, IndexError):
-                    continue
-            await self.activate_raid_mode(chat_id, count, user_ids)
-            return RaidCheckResult(is_raid=True, join_count=count, raid_mode_active=True)
+                    members = await self.redis.zrange(key, 0, -1)
+                except Exception:
+                    members = []
+                user_ids = []
+                for m in members:
+                    try:
+                        user_ids.append(int(str(m).split(":")[0]))
+                    except (ValueError, IndexError):
+                        continue
+                await self.activate_raid_mode(chat_id, count, user_ids)
+                return RaidCheckResult(is_raid=True, join_count=count, raid_mode_active=True)
 
-        return RaidCheckResult(is_raid=False, join_count=count, raid_mode_active=already_active)
+            return RaidCheckResult(is_raid=False, join_count=count, raid_mode_active=already_active)
+        except Exception as exc:
+            logger.debug(f"[raid_detector] check_join xato (Redis?): {exc}")
+            return RaidCheckResult(is_raid=False, join_count=0, raid_mode_active=False)

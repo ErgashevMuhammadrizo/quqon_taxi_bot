@@ -21,7 +21,7 @@ from config import settings
 from database.db import init_models
 from handlers import admin, channel_events, group_events, group_commands, security_events
 from handlers.start import router as start_router
-from handlers.onboarding import router as onboarding_router, set_role_commands
+from handlers.onboarding import router as onboarding_router, set_role_commands, set_group_admin_commands
 from middlewares.rate_limit import ThrottlingMiddleware
 from middlewares.role_check import AdminOnlyMiddleware
 from utils.logger import logger
@@ -91,6 +91,9 @@ async def on_startup(bot: Bot) -> None:
 
     # Har bir adminga rolga mos komandalar menyusi
     await _setup_admin_commands(bot)
+
+    # Barcha guruh adminlariga guruh komandalar menyusi
+    await set_group_admin_commands(bot)
 
     # Webhook (agar yoqilgan bo'lsa)
     if settings.BOT_USE_WEBHOOK:
