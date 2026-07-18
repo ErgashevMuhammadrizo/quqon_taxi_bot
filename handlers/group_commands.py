@@ -54,25 +54,29 @@ _WARN_LIMIT = 3
 async def _is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     """
     Foydalanuvchi shu guruhning Telegram admini yoki GuardBot admini ekanini tekshiradi.
-    Xato bo'lsa ham False qaytarib bot crash qilmaydi.
     """
-    # 1. GuardBot admini (DB + config) — tezkor tekshiruv, API shart emas
-    try:
-        if await get_admin_role(user_id) is not None:
-            return True
-    except Exception:
-        pass
+    # 1. Config super_admins — eng tezkor, DB shart emas
+    from config import settings as cfg
+    if user_id in cfg.super_admins:
+        return True
 
-    # 2. Telegram guruh admini — API chaqiruv
+    # 2. GuardBot DB admini
+    try:
+        role = await get_admin_role(user_id)
+        if role is not None:
+            return True
+    except Exception as exc:
+        logger.warning(f"[group_cmd] get_admin_role xato user={user_id}: {exc}")
+
+    # 3. Telegram guruh admini — API chaqiruv
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         return member.status in ("administrator", "creator")
     except TelegramAPIError as exc:
-        # Bot guruhda admin emas yoki guruh topilmadi — False qaytaramiz (ban qilmaymiz)
         logger.debug(f"[group_cmd] get_chat_member xato user={user_id} chat={chat_id}: {exc}")
         return False
     except Exception as exc:
-        logger.debug(f"[group_cmd] admin tekshiruvda xato: {exc}")
+        logger.warning(f"[group_cmd] admin tekshiruvda xato user={user_id}: {exc}")
         return False
 
 
@@ -145,12 +149,18 @@ async def _reset_warn(user_id: int, chat_id: int) -> None:
 
 
 async def _deny(message: Message, text: str = "⛔️ Ruxsat yo'q.") -> None:
-    sent = await message.answer(text)
-    # Guruhda xato xabarlarni 5 soniyadan so'ng o'chiramiz
+    """Admin tekshiruvidan o'tmaganida qisqa xabar yuboradi va o'chiradi."""
     import asyncio
+    try:
+        sent = await message.reply(text)
+    except TelegramAPIError:
+        return
     await asyncio.sleep(5)
     try:
         await sent.delete()
+    except TelegramAPIError:
+        pass
+    try:
         await message.delete()
     except TelegramAPIError:
         pass
