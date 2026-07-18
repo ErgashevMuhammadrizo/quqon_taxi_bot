@@ -587,16 +587,19 @@ async def on_group_text(message: Message, bot: Bot) -> None:
     except Exception:
         pass
 
+    # ── 1. Spam / reklama tekshiruvi → DARHOL BAN ─────────────────────────────
+    # MIN_TEXT_LEN dan OLDIN — http://, @mention, t.me/ qisqa xabarlar ham ban
+    if text_len > 0:
+        spam_result = detect_spam_in_text(text)
+        if await _handle_spam_result(bot, spam_result, message):
+            return
+
+    # Matn juda qisqa va spam emas — keyingi tekshiruvlar uchun minimal uzunlik
     if text_len < MIN_TEXT_LEN:
         return
 
     # ── 0. Security Engine — xulq-atvor asosidagi risk-tekshiruv ──────────────
     if await _run_security_risk_check(bot, message, user, SecurityActionType.MESSAGE):
-        return
-
-    # ── 1. Spam / reklama tekshiruvi → DARHOL BAN ─────────────────────────────
-    spam_result = detect_spam_in_text(text)
-    if await _handle_spam_result(bot, spam_result, message):
         return
 
     # ── 2. Watermark tekshiruvi ───────────────────────────────────────────────
