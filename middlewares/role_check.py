@@ -65,12 +65,15 @@ _LEVEL: dict[AdminRole, int] = {
 async def get_admin_role(telegram_id: int) -> AdminRole | None:
     """
     Foydalanuvchi rolini qaytaradi.
-    super_admins listida bo'lsa — DB'ga bormay SUPER_ADMIN.
+    super_admins listida bo'lsa — DB'ga BORMAY darhol SUPER_ADMIN.
     DB'da bo'lsa — o'sha rol.
     Bo'lmasa — None.
     """
+    # 1. Config da super_admin bo'lsa — DB ga bormaymiz, tez va ishonchli
     if telegram_id in settings.super_admins:
         return AdminRole.SUPER_ADMIN
+
+    # 2. DB tekshiruvi
     try:
         async with get_session() as session:
             result = await session.execute(
@@ -78,8 +81,12 @@ async def get_admin_role(telegram_id: int) -> AdminRole | None:
             )
             admin = result.scalar_one_or_none()
             return admin.role if admin else None
-    except Exception:
-        # DB ishlamasa ham super_admins listiga tayanamiz
+    except Exception as exc:
+        from utils.logger import logger
+        logger.warning(f"[role_check] DB xato user={telegram_id}: {exc}")
+        # DB ishlamasa config ga qaytamiz
+        if telegram_id in settings.super_admins:
+            return AdminRole.SUPER_ADMIN
         return None
 
 
@@ -122,6 +129,18 @@ class AdminOnlyMiddleware(BaseMiddleware):
 
         # Komanda nomini ajratib olamiz
         command = event.text.split()[0].lstrip("/").split("@")[0].lower()
+
+        # Guruh komandalarini private chatda to'xamiz — ular faqat guruhda ishlaydi
+        _GROUP_ONLY_COMMANDS = {
+            "gban", "gunban", "gmute", "gunmute",
+            "gwarn", "ginfo", "gstatus", "gclean", "raid_off",
+        }
+        if command in _GROUP_ONLY_COMMANDS:
+            await event.answer(
+                f"⚠️ <b>/{command}</b> faqat guruh ichida ishlaydi.\n\n"
+                "Bu komandani guruh chatida yozing, botga private xabar sifatida emas."
+            )
+            return None
 
         required_role = COMMAND_MIN_ROLE.get(command)
 

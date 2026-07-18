@@ -448,8 +448,9 @@ async def cmd_export_logs(message: Message, command: CommandObject) -> None:
 # ─── /settings ────────────────────────────────────────────────────────────────
 
 @router.message(Command("settings"))
-async def cmd_settings(message: Message) -> None:
-    role = await get_admin_role(message.from_user.id)
+async def cmd_settings(message: Message, admin_role: AdminRole = None) -> None:
+    # Middleware admin_role ni data orqali uzatadi. Agar uzatilmagan bo'lsa qayta tekshiramiz.
+    role = admin_role or await get_admin_role(message.from_user.id)
     if role != AdminRole.SUPER_ADMIN:
         await message.answer("⛔️ Bu komanda faqat Super Admin uchun.")
         return

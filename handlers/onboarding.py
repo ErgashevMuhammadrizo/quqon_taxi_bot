@@ -615,9 +615,10 @@ async def fsm_group_got_msg(message: Message, state: FSMContext, bot: Bot) -> No
         f"👥 Guruh: {group_link}\n"
         f"🆔 ID: <code>{group_id}</code>\n\n"
         "<b>Endi nima bo'ladi:</b>\n"
-        "├ Guruhda forward qilingan <b>har qanday xabar</b> — darhol ban\n"
+        "├ Guruhda <b>reklama/spam</b> xabar topilsa — darhol ban\n"
         "├ Himoyalangan kanal kontenti screenshot/nusxa bo'lib kelsa — ban\n"
-        "├ Bot relay orqali kelgan kontent ham — ban\n"
+        "├ Bot relay orqali kelgan spam/kontent ham — ban\n"
+        "├ Banlangan user qaytib kirsa — darhol qayta ban\n"
         "└ Har bir harakat audit logga yoziladi" + warn_text,
     )
 
