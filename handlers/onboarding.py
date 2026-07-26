@@ -278,10 +278,10 @@ async def fsm_admin_got_user(message: Message, state: FSMContext) -> None:
     await state.set_state(AddAdminFSM.waiting_for_role)
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👑 Super Admin", callback_data="role:super_admin")],
-        [InlineKeyboardButton(text="🛡 Moderator",   callback_data="role:moderator")],
-        [InlineKeyboardButton(text="👁 Viewer",       callback_data="role:viewer")],
-        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="role:cancel")],
+        [InlineKeyboardButton(text="👑 Super Admin", callback_data="admin_role:super_admin")],
+        [InlineKeyboardButton(text="🛡 Moderator",   callback_data="admin_role:moderator")],
+        [InlineKeyboardButton(text="👁 Viewer",       callback_data="admin_role:viewer")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin_role:cancel")],
     ])
     await message.answer(
         f"✅ <b>{display}</b> topildi (ID: <code>{user_id}</code>)\n\n"
@@ -290,7 +290,7 @@ async def fsm_admin_got_user(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.callback_query(F.data.startswith("role:"))
+@router.callback_query(F.data.startswith("admin_role:"))
 async def fsm_admin_choose_role(cb: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     """Rol tanlandi — DB ga yozadi, bildirishnoma yuboradi."""
     await cb.answer()
