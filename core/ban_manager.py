@@ -27,6 +27,40 @@ class BanManager:
             result = await session.execute(select(Whitelist).where(Whitelist.user_id == user_id))
             return result.scalar_one_or_none() is not None
 
+    async def is_protected(self, user_id: int) -> tuple[bool, str]:
+        """
+        Foydalanuvchi ban'dan himoyalanganmi?
+
+        Bu MARKAZIY himoya nuqtasi — barcha ban yo'llari (spam, watermark,
+        media job, security engine, join reban, /gban) shu funksiyadan o'tadi.
+        Shu sababli admin yoki whitelist'dagi odam HECH QANDAY holatda
+        ban olmaydi.
+
+        Qaytaradi: (himoyalanganmi, sabab)
+        """
+        # 1. Config SUPER_ADMIN_IDS — DB ga bormay tekshiramiz
+        from config import settings as cfg
+        if user_id in cfg.super_admins:
+            return True, "config super_admin"
+
+        # 2. GuardBot DB admini (super_admin / moderator / viewer)
+        try:
+            from middlewares.role_check import get_admin_role
+            role = await get_admin_role(user_id)
+            if role is not None:
+                return True, f"GuardBot admin ({role.value})"
+        except Exception as exc:
+            logger.warning(f"[ban_manager] admin tekshiruvda xato: {exc}")
+
+        # 3. Whitelist
+        try:
+            if await self.is_whitelisted(user_id):
+                return True, "whitelist"
+        except Exception as exc:
+            logger.warning(f"[ban_manager] whitelist tekshiruvda xato: {exc}")
+
+        return False, ""
+
     async def execute_ban(
         self,
         user_id: int,
@@ -37,13 +71,17 @@ class BanManager:
         banned_by: int | None = None,
     ) -> bool:
         """
-        1) Whitelist tekshiruvi
+        1) Himoya tekshiruvi (admin / whitelist) — himoyalangan bo'lsa ban YO'Q
         2) Chatdan ban qilish (xabarlarini ham o'chirish bilan)
         3) Bazaga yozish (AuditLog + BannedUser)
         4) Adminlarga xabar yuborish
         """
-        if await self.is_whitelisted(user_id):
-            logger.info(f"User {user_id} whitelistda - ban bekor qilindi.")
+        protected, why = await self.is_protected(user_id)
+        if protected:
+            logger.info(
+                f"[ban_manager] User {user_id} himoyalangan ({why}) — "
+                f"ban BEKOR qilindi. Sabab bo'lgan: {reason}"
+            )
             return False
 
         try:

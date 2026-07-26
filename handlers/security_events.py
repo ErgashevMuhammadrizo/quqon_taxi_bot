@@ -129,17 +129,15 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
         if pg is None:
             continue
 
-        # ── 1. Whitelist tekshiruvi ───────────────────────────────────────────
+        # ── 1. Himoya tekshiruvi (admin / whitelist) ─────────────────────────
+        # Admin yoki whitelist'dagi odam captcha ham, restrict ham, ban ham olmaydi
         try:
-            async with get_session() as s:
-                wl = (await s.execute(
-                    sa_select(Whitelist).where(Whitelist.user_id == member.id)
-                )).scalar_one_or_none()
-            if wl:
-                logger.info(f"[JOIN] user={member.id} whitelist'da — o'tkazildi.")
+            protected, why = await BanManager(bot).is_protected(member.id)
+            if protected:
+                logger.info(f"[JOIN] user={member.id} himoyalangan ({why}) — o'tkazildi.")
                 continue
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"[JOIN] himoya tekshiruvda xato: {exc}")
 
         # ── 2. BannedUser — qaytib kirmoqchi → DARHOL BAN ────────────────────
         try:

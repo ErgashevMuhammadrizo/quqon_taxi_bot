@@ -29,6 +29,21 @@ class Base(DeclarativeBase):
     pass
 
 
+def _enum_values(enum_cls):
+    """
+    SQLAlchemy `Enum()` uchun values_callable.
+
+    MUHIM: alembic migratsiyalari PostgreSQL enum turlarini Python enum
+    QIYMATLARI bilan yaratadi (masalan 'moderator', 'button'). SQLAlchemy'ning
+    standart xatti-harakati esa enum NOMINI yuboradi ('MODERATOR', 'BUTTON') —
+    bu `InvalidTextRepresentationError` ga olib keladi.
+
+    Shu funksiya orqali SQLAlchemy ham qiymatlarni ishlatadi va DB bilan
+    to'liq moslashadi.
+    """
+    return [member.value for member in enum_cls]
+
+
 # ─── Enum turlari ─────────────────────────────────────────────────────────────
 
 class AdminRole(str, enum.Enum):
@@ -188,7 +203,9 @@ class AuditLog(Base):
     id:         Mapped[int]          = mapped_column(primary_key=True, autoincrement=True)
     user_id:    Mapped[int | None]   = mapped_column(BigInteger, nullable=True, index=True)
     chat_id:    Mapped[int | None]   = mapped_column(BigInteger, nullable=True)
-    action:     Mapped[ActionType]   = mapped_column(Enum(ActionType))
+    action:     Mapped[ActionType]   = mapped_column(
+        Enum(ActionType, values_callable=_enum_values)
+    )
     reason:     Mapped[str | None]   = mapped_column(Text, nullable=True)
     evidence:   Mapped[str | None]   = mapped_column(Text, nullable=True)
     risk_score: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -231,7 +248,7 @@ class Admin(Base):
     username:    Mapped[str | None] = mapped_column(String(255), nullable=True)
     full_name:   Mapped[str | None] = mapped_column(String(255), nullable=True)
     role:        Mapped[AdminRole] = mapped_column(
-        Enum(AdminRole), default=AdminRole.VIEWER
+        Enum(AdminRole, values_callable=_enum_values), default=AdminRole.VIEWER
     )
     added_by:    Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     added_at:    Mapped[datetime]   = mapped_column(DateTime, default=datetime.utcnow)
@@ -345,9 +362,13 @@ class RiskHistory(Base):
     id:          Mapped[int]            = mapped_column(primary_key=True, autoincrement=True)
     user_id:     Mapped[int]            = mapped_column(BigInteger, index=True)
     chat_id:     Mapped[int]            = mapped_column(BigInteger, index=True)
-    action_type: Mapped[SecurityActionType] = mapped_column(Enum(SecurityActionType))
+    action_type: Mapped[SecurityActionType] = mapped_column(
+        Enum(SecurityActionType, values_callable=_enum_values)
+    )
     risk_score:  Mapped[float]          = mapped_column(Float)
-    decision:    Mapped[SecurityDecision] = mapped_column(Enum(SecurityDecision))
+    decision:    Mapped[SecurityDecision] = mapped_column(
+        Enum(SecurityDecision, values_callable=_enum_values)
+    )
     factors:     Mapped[str | None]     = mapped_column(Text, nullable=True)  # JSON
     created_at:  Mapped[datetime]       = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
@@ -359,7 +380,9 @@ class SecurityLog(Base):
     id:         Mapped[int]              = mapped_column(primary_key=True, autoincrement=True)
     chat_id:    Mapped[int]               = mapped_column(BigInteger, index=True)
     user_id:    Mapped[int | None]        = mapped_column(BigInteger, nullable=True, index=True)
-    event_type: Mapped[SecurityEventType] = mapped_column(Enum(SecurityEventType), index=True)
+    event_type: Mapped[SecurityEventType] = mapped_column(
+        Enum(SecurityEventType, values_callable=_enum_values), index=True
+    )
     message_id: Mapped[int | None]        = mapped_column(BigInteger, nullable=True)
     details:    Mapped[str | None]        = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime]          = mapped_column(DateTime, default=datetime.utcnow, index=True)
@@ -372,11 +395,16 @@ class CaptchaSession(Base):
     id:             Mapped[int]           = mapped_column(primary_key=True, autoincrement=True)
     chat_id:        Mapped[int]           = mapped_column(BigInteger, index=True)
     user_id:        Mapped[int]           = mapped_column(BigInteger, index=True)
-    captcha_type:   Mapped[CaptchaType]   = mapped_column(Enum(CaptchaType))
+    captcha_type:   Mapped[CaptchaType]   = mapped_column(
+        Enum(CaptchaType, values_callable=_enum_values)
+    )
     correct_answer: Mapped[str]           = mapped_column(String(64))
     options:        Mapped[str | None]    = mapped_column(Text, nullable=True)  # JSON
     message_id:     Mapped[int | None]    = mapped_column(BigInteger, nullable=True)
-    status:         Mapped[CaptchaStatus] = mapped_column(Enum(CaptchaStatus), default=CaptchaStatus.PENDING)
+    status:         Mapped[CaptchaStatus] = mapped_column(
+        Enum(CaptchaStatus, values_callable=_enum_values),
+        default=CaptchaStatus.PENDING,
+    )
     attempts:       Mapped[int]           = mapped_column(Integer, default=0)
     created_at:     Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow)
     expires_at:     Mapped[datetime]      = mapped_column(DateTime)
