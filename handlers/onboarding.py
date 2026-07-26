@@ -290,15 +290,24 @@ async def fsm_admin_got_user(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.callback_query(F.data.startswith("admin_role:"))
+@router.callback_query(F.data.startswith("admin_role:") | F.data.startswith("role:"))
 async def fsm_admin_choose_role(cb: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     """Rol tanlandi — DB ga yozadi, bildirishnoma yuboradi."""
-    await cb.answer()
-    choice = cb.data.split(":", 1)[1]
+    await cb.answer("⏳ Bajarilmoqda...")
+
+    # Ikkala prefiks bilan ham ishlaydi (eski/yangi tugmalar)
+    raw = cb.data
+    if raw.startswith("admin_role:"):
+        choice = raw.split(":", 1)[1]
+    else:
+        choice = raw.split(":", 1)[1]
 
     if choice == "cancel":
         await state.clear()
-        await cb.message.edit_text("➖ Admin qo'shish bekor qilindi.")
+        try:
+            await cb.message.edit_text("➖ Admin qo'shish bekor qilindi.")
+        except Exception:
+            pass
         return
 
     # FSM data dan target ma'lumotlarini olish
@@ -307,14 +316,27 @@ async def fsm_admin_choose_role(cb: CallbackQuery, state: FSMContext, bot: Bot) 
 
     # Agar state yo'qolgan bo'lsa (bot restart yoki timeout)
     if not target_id:
-        await cb.message.edit_text(
-            "⚠️ Sessiya muddati tugadi. Iltimos qaytadan /add_admin bosing."
-        )
+        try:
+            await cb.message.edit_text(
+                "⚠️ Sessiya muddati tugadi.\n\n"
+                "Qaytadan /add_admin bosing va xabarni forward qiling."
+            )
+        except Exception:
+            pass
         await state.clear()
         return
 
     display: str = data.get("target_name", str(target_id))
-    role = AdminRole(choice)
+
+    # Rol validatsiyasi
+    try:
+        role = AdminRole(choice)
+    except ValueError:
+        try:
+            await cb.message.edit_text(f"❌ Noto'g'ri rol: {choice}")
+        except Exception:
+            pass
+        return
 
     try:
         async with get_session() as s:
