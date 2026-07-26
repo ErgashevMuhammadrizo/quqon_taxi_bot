@@ -309,88 +309,83 @@ async def cmd_whitelist(message: Message, command: CommandObject) -> None:
     args = (command.args or "").split()
     action = args[0].lower() if args else ""
 
-    # ── Forward/reply usuli — xabarni forward qilib whitelist ga qo'shish ─────
-    if action == "add" and message.reply_to_message:
-        # Reply qilingan xabardan user_id olish
-        reply_user = message.reply_to_message.from_user
-        if reply_user:
-            uid = reply_user.id
-            note = " ".join(args[1:]) if len(args) > 1 and not args[1].lstrip("-").isdigit() else (reply_user.full_name or reply_user.username or "")
-            try:
-                async with get_session() as s:
-                    existing = (await s.execute(
-                        select(Whitelist).where(Whitelist.user_id == uid)
-                    )).scalar_one_or_none()
-                    if existing:
-                        await message.answer(f"ℹ️ <code>{uid}</code> ({note}) allaqachon whitelist'da.")
-                        return
-                    s.add(Whitelist(user_id=uid, added_by=message.from_user.id, note=note))
-                    s.add(AuditLog(
-                        user_id=uid, action=ActionType.WHITELIST_ADD,
-                        reason=f"Admin {message.from_user.id} tomonidan qo'shildi (reply)",
-                    ))
-                await message.answer(f"✅ <b>{note}</b> (<code>{uid}</code>) whitelist'ga qo'shildi.")
-            except Exception as exc:
-                await _db_error(message, exc)
+    # ── Forward/reply usuli — xabarni forward qilib yoki reply qilib whitelist ga qo'shish
+    if action == "add":
+        target_uid = None
+        note_parts = args[1:] if len(args) > 1 else []
+
+        # 1. Reply qilingan xabardan user olish
+        if message.reply_to_message:
+            ru = message.reply_to_message.from_user
+            if ru:
+                target_uid = ru.id
+                if not note_parts:
+                    note_parts = [ru.full_name or ru.username or str(ru.id)]
+            # Forward qilingan xabardan original user
+            elif message.reply_to_message.forward_from:
+                fu = message.reply_to_message.forward_from
+                target_uid = fu.id
+                if not note_parts:
+                    note_parts = [fu.full_name or fu.username or str(fu.id)]
+
+        # 2. Agar reply yo'q — birinchi arg raqammi tekshirish
+        if target_uid is None and len(args) >= 2 and args[1].lstrip("-").isdigit():
+            target_uid = int(args[1])
+            note_parts = args[2:]
+
+        # 3. Hali ham topilmadi — forward qilingan xabar shu xabar o'zimi
+        if target_uid is None:
+            origin = getattr(message, "forward_origin", None)
+            if origin:
+                sender = getattr(origin, "sender_user", None)
+                if sender:
+                    target_uid = sender.id
+                    if not note_parts:
+                        note_parts = [sender.full_name or sender.username or str(sender.id)]
+            elif message.forward_from:
+                target_uid = message.forward_from.id
+                if not note_parts:
+                    note_parts = [message.forward_from.full_name or str(target_uid)]
+
+        if target_uid is None:
+            await message.answer(
+                "❌ Foydalanuvchi aniqlanmadi.\n\n"
+                "<b>Usullar:</b>\n"
+                "1️⃣ Guruhda xabariga <b>reply</b> qilib: <code>/whitelist add Ism</code>\n"
+                "2️⃣ ID bilan: <code>/whitelist add 123456789 Ism</code>\n"
+                "3️⃣ Xabarini botga <b>forward</b> qilib: <code>/whitelist add Ism</code>"
+            )
             return
 
-    if action not in ("add", "remove"):
-        # Ro'yxatni ko'rsatish
+        note = " ".join(note_parts) if note_parts else None
         try:
             async with get_session() as s:
-                rows = (await s.execute(
-                    select(Whitelist).order_by(desc(Whitelist.added_at)).limit(50)
-                )).scalars().all()
-        except Exception as exc:
-            await _db_error(message, exc)
-            return
-
-        if not rows:
-            await message.answer(
-                "📝 <b>Whitelist bo'sh</b>\n\n"
-                "Qo'shish usullari:\n"
-                "• <code>/whitelist add &lt;user_id&gt; [izoh]</code>\n"
-                "• Foydalanuvchi xabariga reply qilib: <code>/whitelist add [izoh]</code>"
-            )
-            return
-        lines = [f"📝 <b>Whitelist</b> ({len(rows)} ta)\n"]
-        for r in rows:
-            lines.append(
-                f"• <code>{r.user_id}</code> — {r.note or '—'} "
-                f"({r.added_at:%d.%m.%Y})"
-            )
-        await message.answer("\n".join(lines))
-        return
-
-    if len(args) < 2 or not args[1].lstrip("-").isdigit():
-        await message.answer(
-            "❌ Foydalanish:\n"
-            "<code>/whitelist add &lt;user_id&gt; [izoh]</code>\n"
-            "<code>/whitelist remove &lt;user_id&gt;</code>\n\n"
-            "Yoki foydalanuvchi xabariga <b>reply</b> qilib:\n"
-            "<code>/whitelist add Shofer ismi</code>"
-        )
-        return
-
-    uid  = int(args[1])
-    note = " ".join(args[2:]) if len(args) > 2 else None
-
-    try:
-        async with get_session() as s:
-            if action == "add":
                 existing = (await s.execute(
-                    select(Whitelist).where(Whitelist.user_id == uid)
+                    select(Whitelist).where(Whitelist.user_id == target_uid)
                 )).scalar_one_or_none()
                 if existing:
-                    await message.answer(f"ℹ️ <code>{uid}</code> allaqachon whitelist'da.")
+                    await message.answer(f"ℹ️ <code>{target_uid}</code> ({note or '—'}) allaqachon whitelist'da.")
                     return
-                s.add(Whitelist(user_id=uid, added_by=message.from_user.id, note=note))
+                s.add(Whitelist(user_id=target_uid, added_by=message.from_user.id, note=note))
                 s.add(AuditLog(
-                    user_id=uid, action=ActionType.WHITELIST_ADD,
+                    user_id=target_uid, action=ActionType.WHITELIST_ADD,
                     reason=f"Admin {message.from_user.id} tomonidan qo'shildi",
                 ))
-                await message.answer(f"✅ <code>{uid}</code> whitelist'ga qo'shildi.")
-            else:
+            await message.answer(
+                f"✅ <b>{note or target_uid}</b> (<code>{target_uid}</code>) whitelist'ga qo'shildi.\n"
+                f"Bu foydalanuvchi endi guruhda ban <b>olmaydi</b>."
+            )
+        except Exception as exc:
+            await _db_error(message, exc)
+        return
+
+    if action == "remove":
+        if len(args) < 2 or not args[1].lstrip("-").isdigit():
+            await message.answer("❌ Foydalanish: <code>/whitelist remove &lt;user_id&gt;</code>")
+            return
+        uid = int(args[1])
+        try:
+            async with get_session() as s:
                 entry = (await s.execute(
                     select(Whitelist).where(Whitelist.user_id == uid)
                 )).scalar_one_or_none()
@@ -402,9 +397,37 @@ async def cmd_whitelist(message: Message, command: CommandObject) -> None:
                     user_id=uid, action=ActionType.WHITELIST_REMOVE,
                     reason=f"Admin {message.from_user.id} tomonidan olib tashlandi",
                 ))
-                await message.answer(f"✅ <code>{uid}</code> whitelist'dan olib tashlandi.")
+            await message.answer(f"✅ <code>{uid}</code> whitelist'dan olib tashlandi.")
+        except Exception as exc:
+            await _db_error(message, exc)
+        return
+
+    # ── Ro'yxatni ko'rsatish ──────────────────────────────────────────────────
+    try:
+        async with get_session() as s:
+            rows = (await s.execute(
+                select(Whitelist).order_by(desc(Whitelist.added_at)).limit(50)
+            )).scalars().all()
     except Exception as exc:
         await _db_error(message, exc)
+        return
+
+    if not rows:
+        await message.answer(
+            "📝 <b>Whitelist bo'sh</b>\n\n"
+            "<b>Qo'shish usullari:</b>\n"
+            "1️⃣ Guruhda xabariga reply: <code>/whitelist add Ism</code>\n"
+            "2️⃣ ID bilan: <code>/whitelist add 123456789 Ism</code>\n"
+            "3️⃣ Xabarini forward qilib: <code>/whitelist add Ism</code>"
+        )
+        return
+    lines = [f"📝 <b>Whitelist</b> ({len(rows)} ta)\n"]
+    for r in rows:
+        lines.append(
+            f"• <code>{r.user_id}</code> — {r.note or '—'} "
+            f"({r.added_at:%d.%m.%Y})"
+        )
+    await message.answer("\n".join(lines))
 
 
 # ─── /scan_history ────────────────────────────────────────────────────────────
