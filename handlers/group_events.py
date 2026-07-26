@@ -113,19 +113,34 @@ async def _is_admin(user_id: int) -> bool:
 
 async def _is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     """
-    Foydalanuvchi shu guruhning Telegram admini yoki GuardBot admini ekanini
-    tekshiradi. Ikkalasidan biri rost bo'lsa True qaytaradi.
-    Botni spam tekshiruvidan himoya qilish uchun ishlatiladi.
+    Foydalanuvchi shu guruhning Telegram admini, GuardBot admini, yoki
+    whitelist'da ekanini tekshiradi. Birontasi True bo'lsa — spam tekshiruvdan o'tkazib yuboriladi.
     """
-    # Anonim admin (guruhda "Adminlar anonim" yoqilgan) — Telegram bu
-    # turdagi xabarlarni faqat haqiqiy adminlarga ruxsat beradi.
+    # 0. Anonim admin
     if user_id == ANONYMOUS_ADMIN_ID:
         return True
 
-    # GuardBot admini (DB + config) — tezkor tekshiruv
+    # 1. Config super_admins — DB ga bormay tekshiramiz
+    if user_id in settings.super_admins:
+        return True
+
+    # 2. GuardBot DB admini
     if await get_admin_role(user_id) is not None:
         return True
-    # Telegram guruh admini — API chaqiruv
+
+    # 3. Whitelist tekshiruvi — whitelist dagi foydalanuvchilar ham himoyalangan
+    try:
+        from database.models import Whitelist
+        async with get_session() as s:
+            wl = (await s.execute(
+                select(Whitelist).where(Whitelist.user_id == user_id)
+            )).scalar_one_or_none()
+            if wl:
+                return True
+    except Exception:
+        pass
+
+    # 4. Telegram guruh admini — API chaqiruv
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         return member.status in ("administrator", "creator")

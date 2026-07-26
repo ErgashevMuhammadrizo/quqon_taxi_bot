@@ -290,7 +290,7 @@ async def fsm_admin_got_user(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.callback_query(AddAdminFSM.waiting_for_role, F.data.startswith("role:"))
+@router.callback_query(F.data.startswith("role:"))
 async def fsm_admin_choose_role(cb: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     """Rol tanlandi — DB ga yozadi, bildirishnoma yuboradi."""
     await cb.answer()
@@ -301,9 +301,19 @@ async def fsm_admin_choose_role(cb: CallbackQuery, state: FSMContext, bot: Bot) 
         await cb.message.edit_text("➖ Admin qo'shish bekor qilindi.")
         return
 
+    # FSM data dan target ma'lumotlarini olish
     data = await state.get_data()
-    target_id: int = data["target_id"]
-    display: str   = data["target_name"]
+    target_id = data.get("target_id")
+
+    # Agar state yo'qolgan bo'lsa (bot restart yoki timeout)
+    if not target_id:
+        await cb.message.edit_text(
+            "⚠️ Sessiya muddati tugadi. Iltimos qaytadan /add_admin bosing."
+        )
+        await state.clear()
+        return
+
+    display: str = data.get("target_name", str(target_id))
     role = AdminRole(choice)
 
     try:

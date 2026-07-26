@@ -309,6 +309,31 @@ async def cmd_whitelist(message: Message, command: CommandObject) -> None:
     args = (command.args or "").split()
     action = args[0].lower() if args else ""
 
+    # ── Forward/reply usuli — xabarni forward qilib whitelist ga qo'shish ─────
+    if action == "add" and message.reply_to_message:
+        # Reply qilingan xabardan user_id olish
+        reply_user = message.reply_to_message.from_user
+        if reply_user:
+            uid = reply_user.id
+            note = " ".join(args[1:]) if len(args) > 1 and not args[1].lstrip("-").isdigit() else (reply_user.full_name or reply_user.username or "")
+            try:
+                async with get_session() as s:
+                    existing = (await s.execute(
+                        select(Whitelist).where(Whitelist.user_id == uid)
+                    )).scalar_one_or_none()
+                    if existing:
+                        await message.answer(f"ℹ️ <code>{uid}</code> ({note}) allaqachon whitelist'da.")
+                        return
+                    s.add(Whitelist(user_id=uid, added_by=message.from_user.id, note=note))
+                    s.add(AuditLog(
+                        user_id=uid, action=ActionType.WHITELIST_ADD,
+                        reason=f"Admin {message.from_user.id} tomonidan qo'shildi (reply)",
+                    ))
+                await message.answer(f"✅ <b>{note}</b> (<code>{uid}</code>) whitelist'ga qo'shildi.")
+            except Exception as exc:
+                await _db_error(message, exc)
+            return
+
     if action not in ("add", "remove"):
         # Ro'yxatni ko'rsatish
         try:
@@ -323,7 +348,9 @@ async def cmd_whitelist(message: Message, command: CommandObject) -> None:
         if not rows:
             await message.answer(
                 "📝 <b>Whitelist bo'sh</b>\n\n"
-                "Qo'shish: <code>/whitelist add &lt;user_id&gt; [izoh]</code>"
+                "Qo'shish usullari:\n"
+                "• <code>/whitelist add &lt;user_id&gt; [izoh]</code>\n"
+                "• Foydalanuvchi xabariga reply qilib: <code>/whitelist add [izoh]</code>"
             )
             return
         lines = [f"📝 <b>Whitelist</b> ({len(rows)} ta)\n"]
@@ -339,7 +366,9 @@ async def cmd_whitelist(message: Message, command: CommandObject) -> None:
         await message.answer(
             "❌ Foydalanish:\n"
             "<code>/whitelist add &lt;user_id&gt; [izoh]</code>\n"
-            "<code>/whitelist remove &lt;user_id&gt;</code>"
+            "<code>/whitelist remove &lt;user_id&gt;</code>\n\n"
+            "Yoki foydalanuvchi xabariga <b>reply</b> qilib:\n"
+            "<code>/whitelist add Shofer ismi</code>"
         )
         return
 
